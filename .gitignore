@@ -1,0 +1,29 @@
+# venv
+.venv/
+
+# python things
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# secrets
+.env
+.env.*
+
+# allow example config
+!.env.example
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform.tfstate.lock.info
+
+# os because i'm on mac and they create the stupid .DS_Store files
+.DS_Store
+
+# case description pdf because it contains an api key
+case_description.pdf

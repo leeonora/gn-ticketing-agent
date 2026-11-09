@@ -1,13 +1,14 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TicketStatus(str, Enum):
     OPEN = "OPEN"
     RESOLVED = "RESOLVED"
     CLOSED = "CLOSED"
+
 
 # complete ticket stored + returned by api
 class Ticket(BaseModel):
@@ -18,12 +19,14 @@ class Ticket(BaseModel):
     status: TicketStatus = TicketStatus.OPEN
     resolution: str | None = None
 
+
 # validates user data
 class TicketCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(min_length=1)
     description: str
+
 
 # defines which fields can be updated
 class TicketUpdate(BaseModel):

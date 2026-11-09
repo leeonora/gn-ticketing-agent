@@ -1,4 +1,3 @@
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -16,6 +15,7 @@ def client(monkeypatch):
 
 
 ### Testing ticket creation
+
 
 def test_create_ticket(client):
     response = client.post(
@@ -39,6 +39,7 @@ def test_create_ticket(client):
 
 ### Testing ticket retrieval
 
+
 def test_get_ticket(client):
     created = client.post(
         "/tickets",
@@ -58,11 +59,11 @@ def test_get_nonexistent_ticket(client):
     response = client.get("/tickets/999")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == (
-        "Ticket with ID 999 not found."
-    )
+    assert response.json()["detail"] == ("Ticket with ID 999 not found.")
+
 
 ### Testing ticket updates
+
 
 def test_update_ticket(client):
     created = client.post(
@@ -121,6 +122,7 @@ def test_update_nonexistent_ticket(client):
     )
 
     assert response.status_code == 404
+
 
 ### Testing deleting tickets
 
@@ -182,6 +184,7 @@ def test_filter_tickets_by_status(client):
     assert tickets[0]["id"] == first["id"]
     assert tickets[0]["status"] == "OPEN"
 
+
 ### Testing request validation
 
 
@@ -216,4 +219,3 @@ def test_update_with_null_description(client):
     unchanged = client.get(f"/tickets/{created['id']}").json()
 
     assert unchanged["description"] == "Keyboard is unresponsive."
-

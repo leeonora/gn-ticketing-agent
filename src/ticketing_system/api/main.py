@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException, status
+from pydantic import ValidationError
+
 from ticketing_system.api.models import (
     Ticket,
     TicketCreate,
@@ -6,8 +8,6 @@ from ticketing_system.api.models import (
     TicketUpdate,
 )
 from ticketing_system.api.store import TicketStore
-from pydantic import ValidationError
-
 
 app = FastAPI(
     title="Mock Ticketing API",
@@ -34,9 +34,11 @@ def create_ticket(ticket: TicketCreate):
         description=ticket.description,
     )
 
+
 @app.get("/tickets", response_model=list[Ticket])
 def get_tickets(status: TicketStatus | None = None):
     return store.get_all(status=status)
+
 
 @app.get("/tickets/{ticket_id}", response_model=Ticket)
 def get_ticket(ticket_id: int):
@@ -61,8 +63,7 @@ def update_ticket(ticket_id: int, updates: TicketUpdate):
 
     # Reject explicit null values for fields that cannot be null.
     if any(
-        field in updates.model_fields_set
-        and getattr(updates, field) is None
+        field in updates.model_fields_set and getattr(updates, field) is None
         for field in ("title", "description", "status")
     ):
         raise HTTPException(
@@ -89,8 +90,8 @@ def update_ticket(ticket_id: int, updates: TicketUpdate):
             detail=str(error),
         ) from error
 
-
     return ticket
+
 
 @app.delete(
     "/tickets/{ticket_id}",

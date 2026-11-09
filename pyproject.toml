@@ -13,6 +13,7 @@ dependencies = [
     "pydantic",
     "httpx",
     "openai",
+    "pydantic-ai-slim[openai]",
     "python-dotenv",
 ]
 

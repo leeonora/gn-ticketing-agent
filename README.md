@@ -1,50 +1,84 @@
 # GN Ticketing Agent
 
-A fault-tolerant support ticketing system built for an end-to-end GenAI agent technical assessment. The project currently provides a **working, locally hosted REST API** for managing support tickets, with validation, meaningful HTTP errors, and automated tests. An LLM-powered agent, pull-request review bot, and infrastructure configuration are planned as subsequent parts of the assessment.
+A local support-ticketing system with a **FastAPI REST API** and a **Pydantic AI agent** that can create, retrieve, filter, update, and delete tickets through natural-language requests. The agent uses HTTP tools to interact with the API and turns business-rule errors into useful feedback instead of crashing.
 
-## Current status
+Built for GN's *End-to-End Fault-Tolerant GenAI Agent System* take-home assessment.
 
-**Part 1 — Mock Ticketing API: implemented and manually tested.** The most recent reported test run (9 November 2026) completed **10 tests passed, 2 deprecation warnings**. The warnings concerned a renamed HTTP 422 status constant; they do not indicate test failures.
+## Implementation status
 
-| Component | Status |
+| Assessment component | Status |
 | --- | --- |
-| Ticket CRUD API, status filtering, and validation | Implemented |
-| API tests with pytest | 10 passing tests |
-| GenAI agent and CLI | Planned — Part 2 |
-| LLM pull-request review workflow | Planned — Part 3 |
-| Azure Terraform skeleton | Planned — Part 4 |
-| MCP integration | Optional bonus; not implemented |
+| Part 1 — Mock Ticketing API | Implemented; API tests passed |
+| Part 2 — GenAI agent, HTTP tools, and CLI | Implemented; six required live scenarios demonstrated |
+| Part 3 — LLM pull-request reviewer / GitHub Actions | Not yet implemented |
+| Part 4 — Azure Terraform skeleton | Not yet implemented |
+| Optional MCP server | Not implemented |
 
 ## Tech stack
 
 - **Python 3.11+** with a `src/` package layout
-- **FastAPI** and **Uvicorn** for the HTTP API
-- **Pydantic** for request, response, and ticket-data validation
-- **pytest** and FastAPI's **TestClient** for automated tests
-- **HTTPX**, **OpenAI Python SDK**, and **python-dotenv** installed in preparation for the agent
+- **FastAPI**, **Uvicorn**, and **Pydantic** for the ticketing API and validation
+- **Pydantic AI** (`pydantic-ai-slim[openai]`) for agent orchestration and typed tool registration
+- **OpenAI Python SDK** to access GN's OpenAI-compatible hosted model (`gpt-6-luna`)
+- **HTTPX** for agent-to-API requests
+- **python-dotenv** for environment configuration
+- **pytest**, FastAPI **TestClient**, Pydantic AI **FunctionModel**, and `unittest.mock` for tests
 - **Ruff** for linting and formatting
 
-## Project structure
+## Architecture
+
+```text
+User
+  |
+  v
+CLI (agent/cli.py)  <--- conversation history, usage limits
+  |
+  v
+Pydantic AI agent (agent/agent.py) <----> GN-hosted LLM (gpt-6-luna)
+  |                  selects tools and writes responses
+  v
+Registered tools: list / get / create / update / delete
+  |
+  v
+HTTP client and error handling (agent/tools.py)
+  |                   ^
+  | HTTP requests     | JSON / HTTP 404 / 422
+  v                   |
+FastAPI (api/main.py)
+  |-- Pydantic request/response models (api/models.py)
+  `-- In-memory ticket store (api/store.py)
+```
+
+The model **selects a tool and supplies arguments**; Python executes the registered tool. The tools make real HTTP requests to FastAPI—they **do not access the ticket store directly**. The API remains responsible for enforcing business rules. Tool results carry structured success/error information back to the LLM so it can explain failures in natural language.
+
+### Project structure
 
 ```text
 gn-ticketing-agent/
 ├── src/
 │   └── ticketing_system/
 │       ├── __init__.py
-│       └── api/
+│       ├── api/
+│       │   ├── __init__.py
+│       │   ├── main.py          # FastAPI routes
+│       │   ├── models.py        # Ticket models and status enum
+│       │   └── store.py         # In-memory TicketStore
+│       └── agent/
 │           ├── __init__.py
-│           ├── main.py         # FastAPI application and HTTP routes
-│           ├── models.py       # Ticket, TicketCreate, TicketUpdate, TicketStatus
-│           └── store.py        # In-memory TicketStore
+│           ├── agent.py         # Pydantic AI agent and registered tools
+│           ├── tools.py         # HTTPX operations and structured errors
+│           └── cli.py           # Interactive CLI
 ├── tests/
-│   └── test_api.py             # Automated API tests
-├── pyproject.toml              # Project metadata and dependencies
-├── .env.example                # Environment variable placeholders
+│   ├── test_api.py              # API contract and validation tests
+│   ├── test_agent.py            # Mocked agent/tool orchestration tests
+│   └── test_cli.py              # Mocked CLI and usage-limit tests
+├── pyproject.toml
+├── .env.example                 # Safe configuration placeholders
 ├── .gitignore
 └── README.md
 ```
 
-The `agent/`, `scripts/`, `infra/`, and `.github/workflows/` directories will be added as their corresponding parts are implemented. Only document them here as existing after they have been created.
+Parts 3 and 4 will add their own scripts, workflow, and infrastructure files when implemented.
 
 ## Getting started
 
@@ -52,124 +86,183 @@ The `agent/`, `scripts/`, `infra/`, and `.github/workflows/` directories will be
 
 - Python **3.11 or newer**
 - Git
+- A valid credential for the **GN-provided LLM endpoint** to use Part 2; **Part 1 and mocked tests do not require it**
 
-### Installation
-
-Clone this repository (replace the placeholder with the actual repository URL):
+### 1. Install
 
 ```bash
 git clone https://github.com/leeonora/gn-ticketing-agent
 cd gn-ticketing-agent
-```
-
-Create a virtual environment:
-
-```bash
 python -m venv .venv
 ```
 
-Activate it using your shell:
+Activate the environment:
 
 ```bash
-# macOS/Linux (Bash or Zsh)
+# macOS/Linux — Bash or Zsh
 source .venv/bin/activate
 
-# Fish shell (run this instead if using Fish)
-source .venv/bin/activate.fish
+# Fish shell — use this instead
+# source .venv/bin/activate.fish
 ```
 
-On Windows PowerShell, use `.venv\Scripts\Activate.ps1` instead.
+On Windows PowerShell, run `.venv\Scripts\Activate.ps1`.
 
-Install the project and development tools:
+Install the project and its development dependencies:
 
 ```bash
 python -m pip install -e ".[dev]"
 ```
 
-### Run the API
+**Dependency note:** `pyproject.toml` must include `pydantic-ai-slim[openai]` in its project dependencies in addition to FastAPI, Uvicorn, Pydantic, HTTPX, OpenAI, and python-dotenv. This is required for the implemented agent.
 
-From the repository root with the virtual environment activated:
+### 2. Configure the agent
+
+Copy the environment template:
+
+```bash
+cp .env.example .env
+```
+
+The template should contain **placeholder values only**:
+
+```dotenv
+OPENAI_API_KEY=your_gn_api_key_here
+OPENAI_BASE_URL=https://models.genie.gn.group/openai/v1
+OPENAI_MODEL=gpt-6-luna
+TICKETING_API_BASE_URL=http://127.0.0.1:8000
+```
+
+Insert the authorized GN credential **only into your local `.env`**. The project follows GN's supplied OpenAI-compatible `/openai/v1` endpoint and `api-key` header pattern. The model is configured for Chat Completions with `openai_reasoning_effort="none"` because GN's endpoint rejects function tools with reasoning enabled in that mode. No `api_version` is needed for the endpoint shown above.
+
+Never commit `.env`, credentials, or the original assessment PDF containing the credential. If a secret has been committed, simply deleting it in a subsequent commit does **not** remove it from Git history; rotate the credential and clean the history as appropriate.
+
+### 3. Run FastAPI (terminal 1)
 
 ```bash
 uvicorn ticketing_system.api.main:app --reload
 ```
 
-Open the interactive Swagger UI at **http://127.0.0.1:8000/docs**. The health check is available at **http://127.0.0.1:8000/health**.
+API documentation: **http://127.0.0.1:8000/docs**
+Health check: **http://127.0.0.1:8000/health**
 
-The API uses an **in-memory** ticket store. Tickets are reset whenever the server process restarts; no external database or API credentials are required to run **Part 1**.
+### 4. Run the agent CLI (terminal 2)
 
-## API endpoints
+Activate the same virtual environment in a second terminal, from the repository root:
 
-| Method | Route | Purpose | Success response |
+```bash
+python -m ticketing_system.agent.cli
+```
+
+Example interaction:
+
+```text
+GN Ticketing Agent
+Type 'exit' to quit.
+
+You: Create a new ticket about a keyboard not working.
+Agent: Created ticket #1: Keyboard not working. It's currently OPEN.
+
+You: Retrieve all open tickets.
+Agent: There is 1 open ticket: #1 — Keyboard not working.
+
+You: Update ticket 1 to have status PROGRESS.
+Agent: PROGRESS is not a valid status. Available statuses: OPEN, RESOLVED, CLOSED.
+
+You: exit
+Goodbye!
+```
+
+The CLI keeps message history between turns, accepts `exit`/`quit` (or Ctrl+C/Ctrl+D), and handles agent execution errors. It applies per-turn **Pydantic AI usage limits** of **5 model requests** and **5 tool calls** to bound agent execution. A limit is not a hard dollar/token budget, and a tool may already have changed a ticket before a later failure.
+
+To suppress Pydantic AI's informational startup banner in **Fish**, run this in the agent terminal before starting the CLI:
+
+```fish
+set -x PYDANTIC_AI_NO_BANNER 1
+python -m ticketing_system.agent.cli
+```
+
+For Bash/Zsh, use `export PYDANTIC_AI_NO_BANNER=1` instead. Logfire is **not required** to use the project.
+
+**Note:** The mock API stores tickets in memory. Restarting the API clears tickets and resets ticket IDs. Use the ID returned by the creation request, rather than assuming it is always `1`.
+
+## Ticketing API
+
+| Method | Endpoint | Purpose | Successful response |
 | --- | --- | --- | --- |
 | `GET` | `/health` | Health check | `200 OK` |
-| `POST` | `/tickets` | Create a new ticket | `201 Created` |
-| `GET` | `/tickets` | List tickets, optionally filter by status | `200 OK` |
-| `GET` | `/tickets/{ticket_id}` | Get a ticket by ID | `200 OK` |
-| `PATCH` | `/tickets/{ticket_id}` | Update selected ticket fields | `200 OK` |
+| `POST` | `/tickets` | Create a ticket | `201 Created` |
+| `GET` | `/tickets` | List tickets; optional `?status=OPEN` filter | `200 OK` |
+| `GET` | `/tickets/{ticket_id}` | Retrieve a ticket | `200 OK` |
+| `PATCH` | `/tickets/{ticket_id}` | Partially update a ticket | `200 OK` |
 | `DELETE` | `/tickets/{ticket_id}` | Delete a ticket | `204 No Content` |
 
-Ticket fields: `id`, `title`, `description`, `created`, `status`, and `resolution`.
+Ticket properties are `id`, `title`, `description`, `created`, `status`, and `resolution`. New tickets start with status `OPEN`, a generated ID, and a UTC creation timestamp. Valid statuses are `OPEN`, `RESOLVED`, and `CLOSED`.
 
-Valid status values are `OPEN`, `RESOLVED`, and `CLOSED`. New tickets start in `OPEN`; the server generates the ID and a timezone-aware **UTC** creation timestamp.
-
-### Example: create a ticket
+Example direct API calls (do not use GN LLM tokens):
 
 ```bash
 curl -X POST http://127.0.0.1:8000/tickets \
   -H "Content-Type: application/json" \
   -d '{"title":"Keyboard not working","description":"Keyboard is unresponsive."}'
-```
 
-The response includes a generated ticket ID. Use that ID for subsequent requests:
-
-```bash
 # Replace 1 with an existing ticket ID
 curl http://127.0.0.1:8000/tickets/1
+curl 'http://127.0.0.1:8000/tickets?status=OPEN'
 
 curl -X PATCH http://127.0.0.1:8000/tickets/1 \
   -H "Content-Type: application/json" \
   -d '{"status":"RESOLVED","resolution":"Replaced faulty cable"}'
 
-curl 'http://127.0.0.1:8000/tickets?status=OPEN'
-
 curl -i -X DELETE http://127.0.0.1:8000/tickets/1
 ```
 
-### Validation and error handling
+### Error handling
 
-The API checks incoming data using Pydantic and applies ticket business rules. Examples:
+The API enforces its rules and returns HTTP errors with details:
 
-- **404 Not Found:** requesting, updating, or deleting a nonexistent ticket, e.g. `{"detail":"Ticket with ID 999 not found."}`
-- **422 Unprocessable Content:** an invalid status such as `PROGRESS`, with a message identifying valid statuses: `OPEN`, `RESOLVED`, `CLOSED`
-- **422 validation error:** an empty ticket title, an invalid path parameter, or an invalid update body
+- **404:** nonexistent ticket ID (e.g. `Ticket with ID 999 not found.`)
+- **422:** invalid status in an update (e.g. `PROGRESS`, with `OPEN`, `RESOLVED`, and `CLOSED` listed as valid values)
+- **422:** invalid input such as an empty title or an invalid update body
 
-Failed validation must not partially modify an existing ticket. The ticket-update implementation revalidates the merged ticket before saving it.
+The API validates a complete merged ticket before saving an update, so invalid updates do not partially change a ticket. The agent's HTTPX layer converts HTTP outcomes into structured results, for example:
 
-## Automated tests
+```json
+{"success": false, "status_code": 422, "error": "Invalid status 'PROGRESS'. Valid statuses are: OPEN, RESOLVED, CLOSED."}
+```
 
-Run the suite from the repository root:
+It also distinguishes network failures from API validation errors and handles empty-body `204` responses. The LLM receives these results and can explain the specific failure rather than inventing a success message.
+
+## Testing
+
+Run all automated tests:
 
 ```bash
 python -m pytest -v
 ```
 
-The API tests use FastAPI's `TestClient`, so **Uvicorn does not need to be running**. Each test receives a fresh in-memory ticket store to keep tests independent.
+The automated tests use local `TestClient` and mocks / Pydantic AI testing models; **they do not require a running Uvicorn server and do not call GN's LLM**.
 
-| Test | What it checks |
+| Test file | Coverage |
 | --- | --- |
-| `test_create_ticket` | Ticket creation, `201`, generated ID, default status and timestamp |
-| `test_get_ticket` | Retrieval of an existing ticket |
-| `test_get_nonexistent_ticket` | `404` and descriptive error for missing ID |
-| `test_update_ticket` | Valid status and resolution update |
-| `test_invalid_status` | `422` for `PROGRESS`, allowed statuses in message, unchanged ticket |
-| `test_update_nonexistent_ticket` | `404` for a missing ticket on PATCH |
-| `test_delete_ticket` | `204`, empty body, ticket subsequently absent |
-| `test_filter_tickets_by_status` | Filtered GET returns matching tickets only |
-| `test_create_ticket_with_empty_title` | `422` for an empty title |
-| `test_update_with_null_description` | `422` and unchanged data after an invalid PATCH |
+| `tests/test_api.py` | 10 API tests covering CRUD, filtering, validation, `404`/`422`, and unchanged state after rejected updates |
+| `tests/test_agent.py` | 6 parameterized mocked tool scenarios: list, missing ticket, create, invalid status, resolve, delete; verifies tool arguments and results forwarded to the model |
+| `tests/test_cli.py` | 2 mocked CLI scenarios: message dispatch with usage limits and graceful handling when limits are exceeded |
 
-**Latest reported result:** `10 passed, 2 warnings in 0.25s` (9 November 2026). To eliminate those deprecation warnings, replace `status.HTTP_422_UNPROCESSABLE_ENTITY` with `status.HTTP_422_UNPROCESSABLE_CONTENT` where used, and rerun the suite.
+These test counts reflect the implementation developed for this assessment; run the full suite in your own environment for the latest aggregate result. Mocked models verify wiring and tool-result propagation; **they do not establish whether GN's actual model chooses the right tools or explains failures well**.
+
+### Live end-to-end scenarios
+
+The following six GN-required requests were exercised through the CLI against GN's hosted LLM and the running FastAPI server on **9 November 2026**, with appropriate responses observed:
+
+1. `Create a new ticket about a keyboard not working.` — ticket created with `OPEN` status.
+2. `Retrieve all open tickets.` — open ticket listed.
+3. `Get details for ticket 1.` — ticket details returned.
+4. `Update ticket 1 to have status PROGRESS.` — agent explained invalid status and listed allowed values from the API's `422` detail.
+5. `Update ticket 1 to RESOLVED, adding 'Replaced faulty cable' as the resolution.` — agent confirmed status and resolution.
+6. `Update ticket 999 to CLOSED.` — agent explained that the nonexistent ticket could not be updated (`404`).
+
+For a fresh demonstration, replace `1` with the actual created ticket ID. You can inspect final stored state via `GET /tickets/{ticket_id}` or Swagger UI without an LLM request. GN monitors usage, so keep live calls focused; use mocked tests during development.
 
 Optional code quality checks:
 
@@ -178,26 +271,16 @@ python -m ruff check .
 python -m ruff format --check .
 ```
 
-## Planned GenAI agent (Part 2)
-
-The next component will expose the API operations to an LLM through custom tools and provide a simple command-line interface. The agent should use HTTP requests to the API rather than accessing the in-memory store directly. It must translate API `404` and `422` response details into clear, actionable feedback for users.
-
-Future parts also require a pull-request review script integrated with GitHub Actions (Part 3), and a minimal Azure Terraform configuration under `infra/` (Part 4). These components are **not yet available to run**.
-
-### Credentials for future LLM integration
-
-Once the agent is implemented, copy the environment template and supply the LLM credentials locally:
-
-```bash
-cp .env.example .env
-```
-
-The `.env.example` file must contain **placeholders only**. Never commit API keys, `.env`, or the original assessment PDF if it contains credentials. If a secret has already been committed, removing the file from a later commit does not erase it from Git history; arrange credential rotation and history cleanup as needed.
-
 ## Production considerations
 
-**Design decision to revisit:** In-memory storage keeps the exercise minimal and easy to run, but it is not durable and will not work as shared state across multiple application processes. In production, replace `TicketStore`'s dictionary with persistent storage (for example, a database) while keeping the API contracts and error semantics stable.
+**Persistence:** The in-memory dictionary is deliberately simple but loses tickets after restarts and cannot share state across server processes. In production, use a database while preserving API contracts and error semantics.
 
-## Scope
+Further production improvements would include authentication/authorization, explicit confirmation for destructive operations, stronger timeout/retry policy, durable audit logs, observability, and persisted conversations. The optional requirement to require a resolution note when resolving a ticket was not implemented in this mock API.
 
-This README reflects the API implementation and test results reported during development. Additional integration tests, concurrency handling, authentication, and persistent storage are outside the current mock API scope. The optional requirement to mandate a resolution note when changing a ticket to `RESOLVED` has not been implemented.
+## Remaining scope
+
+**Part 3:** Implement a PR-diff analysis script that calls an LLM and posts one review comment, with GitHub Actions triggered on pull requests (`opened` and `synchronize`).
+
+**Part 4:** Add a minimal valid Azure Terraform configuration under `infra/` (`main.tf`, `variables.tf`, `outputs.tf`). Deployment is not required.
+
+The optional MCP server has not been implemented.

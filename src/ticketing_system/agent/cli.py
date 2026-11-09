@@ -1,3 +1,7 @@
+import os
+
+os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
+
 from openai import OpenAIError
 from pydantic_ai import UsageLimits
 from pydantic_ai.exceptions import AgentRunError, UsageLimitExceeded

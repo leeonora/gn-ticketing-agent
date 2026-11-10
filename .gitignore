@@ -27,3 +27,6 @@ __pycache__/
 
 # case description pdf because it contains an api key
 case_description.pdf
+
+# logs
+logs/

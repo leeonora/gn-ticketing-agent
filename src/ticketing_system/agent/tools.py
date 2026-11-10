@@ -1,9 +1,13 @@
+import logging
 import os
+import time
 
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = os.getenv(
     "TICKETING_API_BASE_URL",
@@ -18,6 +22,10 @@ def _request(
 ) -> dict:
     """Send an HTTP request and return a structured result."""
 
+    start_time = time.perf_counter()
+
+    logger.info("Sending %s request to %s", method, endpoint)
+
     try:
         response = httpx.request(
             method=method,
@@ -29,6 +37,16 @@ def _request(
         response.raise_for_status()
 
         data = response.json() if response.content else None
+
+        duration = time.perf_counter() - start_time
+
+        logger.info(
+            "%s %s succeeded | HTTP %s | %.3f seconds",
+            method,
+            endpoint,
+            response.status_code,
+            duration,
+        )
 
         return {
             "success": True,
@@ -42,13 +60,37 @@ def _request(
         except (ValueError, AttributeError):
             detail = exc.response.text
 
+        duration = time.perf_counter() - start_time
+        status_code = exc.response.status_code
+
+        log = logger.warning if 400 <= status_code < 500 else logger.error
+
+        log(
+            "%s %s failed | HTTP %s | %.3f seconds | %s",
+            method,
+            endpoint,
+            status_code,
+            duration,
+            detail,
+        )
+
         return {
             "success": False,
-            "status_code": exc.response.status_code,
+            "status_code": status_code,
             "error": detail,
         }
 
     except httpx.RequestError as exc:
+        duration = time.perf_counter() - start_time
+
+        logger.error(
+            "%s %s failed | %s | %.3f seconds",
+            method,
+            endpoint,
+            type(exc).__name__,
+            duration,
+        )
+
         return {
             "success": False,
             "status_code": None,

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, HTTPException, status
 from pydantic import ValidationError
 
@@ -8,6 +10,10 @@ from ticketing_system.api.models import (
     TicketUpdate,
 )
 from ticketing_system.api.store import TicketStore
+from ticketing_system.logging_config import setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Mock Ticketing API",
@@ -29,15 +35,27 @@ def health_check():
     status_code=status.HTTP_201_CREATED,
 )
 def create_ticket(ticket: TicketCreate):
-    return store.create(
+    created_ticket = store.create(
         title=ticket.title,
         description=ticket.description,
     )
 
+    logger.info("Ticket %s created successfully", created_ticket.id)
+
+    return created_ticket
+
 
 @app.get("/tickets", response_model=list[Ticket])
 def get_tickets(status: TicketStatus | None = None):
-    return store.get_all(status=status)
+    tickets = store.get_all(status=status)
+
+    logger.info(
+        "Retrieved %s tickets | Status filter: %s",
+        len(tickets),
+        status.value if status is not None else "ALL",
+    )
+
+    return tickets
 
 
 @app.get("/tickets/{ticket_id}", response_model=Ticket)
@@ -45,10 +63,14 @@ def get_ticket(ticket_id: int):
     ticket = store.get(ticket_id)
 
     if ticket is None:
+        logger.warning("Ticket %s not found", ticket_id)
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Ticket with ID {ticket_id} not found.",
         )
+
+    logger.info("Ticket %s retrieved successfully", ticket_id)
 
     return ticket
 
@@ -56,6 +78,8 @@ def get_ticket(ticket_id: int):
 @app.patch("/tickets/{ticket_id}", response_model=Ticket)
 def update_ticket(ticket_id: int, updates: TicketUpdate):
     if store.get(ticket_id) is None:
+        logger.warning("Cannot update ticket %s: not found", ticket_id)
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Ticket with ID {ticket_id} not found.",
@@ -66,6 +90,11 @@ def update_ticket(ticket_id: int, updates: TicketUpdate):
         field in updates.model_fields_set and getattr(updates, field) is None
         for field in ("title", "description", "status")
     ):
+        logger.warning(
+            "Cannot update ticket %s: invalid null field",
+            ticket_id,
+        )
+
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Title, description, and status cannot be null.",
@@ -75,6 +104,11 @@ def update_ticket(ticket_id: int, updates: TicketUpdate):
         ticket = store.update(ticket_id, updates)
 
     except ValidationError as error:
+        logger.warning(
+            "Cannot update ticket %s: validation error",
+            ticket_id,
+        )
+
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=error.errors(
@@ -85,10 +119,22 @@ def update_ticket(ticket_id: int, updates: TicketUpdate):
         ) from error
 
     except ValueError as error:
+        logger.warning(
+            "Cannot update ticket %s: %s",
+            ticket_id,
+            type(error).__name__,
+        )
+
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(error),
         ) from error
+
+    logger.info(
+        "Ticket %s updated successfully | Fields: %s",
+        ticket_id,
+        ", ".join(sorted(updates.model_fields_set)),
+    )
 
     return ticket
 
@@ -99,7 +145,11 @@ def update_ticket(ticket_id: int, updates: TicketUpdate):
 )
 def delete_ticket(ticket_id: int):
     if not store.delete(ticket_id):
+        logger.warning("Cannot delete ticket %s: not found", ticket_id)
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Ticket with ID {ticket_id} not found.",
         )
+
+    logger.info("Ticket %s deleted successfully", ticket_id)

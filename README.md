@@ -251,6 +251,63 @@ The automated tests use local `TestClient` and mocks / Pydantic AI testing model
 
 These test counts reflect the implementation developed for this assessment; run the full suite in your own environment for the latest aggregate result. Mocked models verify wiring and tool-result propagation; **they do not establish whether GN's actual model chooses the right tools or explains failures well**.
 
+
+## Logging and Observability
+
+The application uses Python's built-in `logging` module to provide
+basic observability across the FastAPI server, HTTP tools, and agent CLI.
+
+Logs are written to both the console and `logs/ticketing.log`.
+
+### Logged Events
+
+- API operations, including ticket creation, retrieval, updates, and deletion.
+- HTTP requests, response status codes, and execution times.
+- Expected business errors (404 and 422) at WARNING level.
+- Network and server failures at ERROR level.
+- CLI session starts, agent execution times, and usage-limit errors.
+
+### Log Rotation
+
+Logs use Python's `RotatingFileHandler` with the following configuration:
+
+- Maximum file size: 5 MiB
+- Maximum backups: 3
+- Maximum total storage: approximately 20 MiB
+
+The `logs/` directory is excluded from version control.
+
+### Optional Conversation Logging
+
+For debugging LLM behavior, user prompts and final agent responses
+can optionally be logged.
+
+Add the following setting to your local `.env` file:
+
+```dotenv
+LOG_CONVERSATIONS=true
+```
+
+Conversation logging is disabled by default (`false`).
+
+When enabled, prompts and responses are recorded in both the console
+and rotating log files. This is intended for local testing with
+non-sensitive data.
+
+Conversation logs may contain sensitive information and should not
+be committed or shared. Disabling the setting does not delete
+previously recorded conversations.
+
+### Production Considerations
+
+For a production deployment, logging should use centralized,
+structured logs with appropriate access controls, retention
+policies, and sensitive-data redaction.
+
+The current implementation prioritizes simplicity and local
+debugging for this assessment.
+
+
 ### Live end-to-end scenarios
 
 The following six GN-required requests were exercised through the CLI against GN's hosted LLM and the running FastAPI server on **9 November 2026**, with appropriate responses observed:

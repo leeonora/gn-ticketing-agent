@@ -9,7 +9,7 @@ A mock support-ticketing API, a natural-language agent, and an automated AI pull
 | **1 — Ticketing API** | FastAPI CRUD, filtering, validation, soft delete and restore | 17 API tests passed |
 | **2 — GenAI agent** | Pydantic AI CLI with six HTTP-backed tools | 9 agent tests, 4 CLI tests; live GN scenarios demonstrated |
 | **3 — PR review bot** | GitHub Actions + Python + Pydantic AI; posts one review comment per run | 7 tests passed; [PR #1 successfully reviewed](https://github.com/leeonora/gn-ticketing-agent/pull/1) |
-| **4 — Azure Terraform** | Not yet implemented | Pending |
+| **4 — Azure Terraform** | Resource group, Linux App Service plan, and Linux Web App | `terraform init` and `terraform validate` succeeded (10 November 2026) |
 
 **Latest local verification (10 November 2026): 37 tests passed**, Ruff lint checks passed. One non-failing third-party Python 3.13/Pydantic Graph deprecation warning remains. Optional MCP server not implemented.
 
@@ -122,6 +122,31 @@ On pull requests **opened** or **synchronized**, `.github/workflows/pr_review.ym
 
 The reviewer limits input to the first **20,000 characters** of the diff and to **one model request per run**. Very large diffs may be reviewed only partially; new workflow runs create new comments rather than updating an earlier one. Model-generated feedback is advisory.
 
+## Part 4 — Azure Terraform skeleton
+
+The `infra/` directory defines a minimal potential Azure hosting setup for the Part 1 FastAPI service:
+
+| Resource | Purpose |
+| --- | --- |
+| Azure resource group | Groups the application's Azure resources |
+| Linux App Service plan (`B1`) | Provides compute capacity for a Linux-hosted application |
+| Linux Web App (Python 3.13) | Defines where the FastAPI service could run |
+
+The configuration is split across `main.tf` (provider and resources), `variables.tf` (resource group name, region, web app name), and `outputs.tf` (the web app's HTTPS URL). The generated `.terraform.lock.hcl` records the selected AzureRM provider version.
+
+**Validate locally** (Terraform CLI required; no Azure credentials or GN key needed):
+
+```bash
+cd infra
+terraform fmt -check
+terraform init
+terraform validate
+```
+
+**Verified locally on 10 November 2026:** `terraform init` succeeded with AzureRM `v4.81.0`, and `terraform validate` reported `Success! The configuration is valid.` The `terraform fmt` command also ran without errors.
+
+**Scope:** This is infrastructure configuration only. It does not package or upload the Python application, install its dependencies in Azure, or define a deployment pipeline or startup command. No `terraform plan` or `terraform apply` was performed, and no Azure resources were created. A real deployment would require additional application deployment configuration and a globally unique Web App name; the current B1 plan would incur charges if provisioned.
+
 ## Tests and code quality
 
 ```bash
@@ -144,8 +169,8 @@ Console and rotating logs (`logs/ticketing.log`) record API/tool operations, HTT
 
 `LOG_CONVERSATIONS=false` by default; set it to `true` in local `.env` to log user prompts and final responses. Only enable it with nonsensitive test data; previously captured text is not automatically erased when the setting is disabled. File logging is intended for local development, not multiprocess production logging.
 
-## Production considerations and remaining work
+## Part 5 (optional) — Production design decision
 
 The most important production change would be **persistent storage** with a defined deletion-retention policy: the current in-memory store loses all tickets on restart. Other production needs include authentication/authorization, audit trails, stronger observability, and safeguards around destructive actions. The optional rule requiring resolution notes was not implemented.
 
-**Part 4 remains pending:** a minimal valid Azure Terraform skeleton under `infra/` (`main.tf`, `variables.tf`, `outputs.tf`). No actual Azure deployment is required. The optional MCP server was not implemented.
+The optional MCP server (Part 2 bonus) was not implemented. The Azure infrastructure remains intentionally undeployed.

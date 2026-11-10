@@ -15,11 +15,14 @@ __pycache__/
 # allow example config
 !.env.example
 
-# terraform
+# Terraform
 .terraform/
 *.tfstate
 *.tfstate.*
 *.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
 .terraform.tfstate.lock.info
 
 # os because i'm on mac and they create the stupid .DS_Store files

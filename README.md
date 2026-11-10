@@ -58,6 +58,7 @@ gn-ticketing-agent/
 ├── src/
 │   └── ticketing_system/
 │       ├── __init__.py
+│       ├── logging_config.py # Console and rotating file logging
 │       ├── api/
 │       │   ├── __init__.py
 │       │   ├── main.py          # FastAPI routes
@@ -71,7 +72,7 @@ gn-ticketing-agent/
 ├── tests/
 │   ├── test_api.py              # API contract and validation tests
 │   ├── test_agent.py            # Mocked agent/tool orchestration tests
-│   └── test_cli.py              # Mocked CLI and usage-limit tests
+│   └── test_cli.py              # Mocked CLI, limits, and logging tests
 ├── pyproject.toml
 ├── .env.example                 # Safe configuration placeholders
 ├── .gitignore
@@ -131,6 +132,7 @@ OPENAI_API_KEY=your_gn_api_key_here
 OPENAI_BASE_URL=https://models.genie.gn.group/openai/v1
 OPENAI_MODEL=gpt-6-luna
 TICKETING_API_BASE_URL=http://127.0.0.1:8000
+LOG_CONVERSATIONS=false
 ```
 
 Insert the authorized GN credential **only into your local `.env`**. The project follows GN's supplied OpenAI-compatible `/openai/v1` endpoint and `api-key` header pattern. The model is configured for Chat Completions with `openai_reasoning_effort="none"` because GN's endpoint rejects function tools with reasoning enabled in that mode. No `api_version` is needed for the endpoint shown above.
@@ -185,6 +187,62 @@ python -m ticketing_system.agent.cli
 For Bash/Zsh, use `export PYDANTIC_AI_NO_BANNER=1` instead. Logfire is **not required** to use the project.
 
 **Note:** The mock API stores tickets in memory. Restarting the API clears tickets and resets ticket IDs. Use the ID returned by the creation request, rather than assuming it is always `1`.
+
+## Live Agent Demonstration
+
+All six required orchestration scenarios were exercised successfully on **9 November 2026** using GN's hosted `gpt-6-luna` model, the Pydantic AI CLI, HTTP-backed tools, and a running FastAPI server. These were **real LLM interactions**, unlike the mocked automated tests below.
+
+The prompts are the ones used in the demonstration. The outcomes are based on the recorded results; **they are summaries, not a verbatim transcript of every agent response**, since the full terminal output was not preserved. The first creation response is reproduced from the recorded wording.
+
+### 1. Create a ticket
+
+**User:** `Create a new ticket about a keyboard not working.`
+
+**Agent (recorded response):**
+
+> Created ticket #1: Keyboard not working. It’s currently OPEN.
+
+**Observed outcome:** Ticket #1 was created with status `OPEN`.
+
+### 2. Filter open tickets
+
+**User:** `Retrieve all open tickets.`
+
+**Observed outcome:** The agent retrieved and listed the open ticket, `#1 — Keyboard not working`.
+
+### 3. Retrieve ticket details
+
+**User:** `Get details for ticket 1.`
+
+**Observed outcome:** The agent returned ticket #1's description, `OPEN` status, UTC creation timestamp, and indicated that no resolution was recorded.
+
+### 4. Reject an invalid status (HTTP 422)
+
+**User:** `Update ticket 1 to have status PROGRESS.`
+
+**Observed outcome:** The agent explained that `PROGRESS` was invalid and reported the allowed values: `OPEN`, `RESOLVED`, and `CLOSED`. This reflected the API's validation detail:
+
+```text
+Invalid status 'PROGRESS'. Valid statuses are: OPEN, RESOLVED, CLOSED.
+```
+
+### 5. Resolve the ticket
+
+**User:** `Update ticket 1 to RESOLVED, adding 'Replaced faulty cable' as the resolution.`
+
+**Observed outcome:** The agent confirmed that ticket #1 was `RESOLVED` and that its resolution was `Replaced faulty cable`.
+
+### 6. Handle a nonexistent ticket (HTTP 404)
+
+**User:** `Update ticket 999 to CLOSED.`
+
+**Observed outcome:** The agent explained that ticket #999 did not exist, reflecting the API's error detail:
+
+```text
+Ticket with ID 999 not found.
+```
+
+**Result:** All six scenarios were demonstrated successfully, including tool selection, HTTP-backed ticket operations, and interpretation of actual API `404` and `422` errors. The mock API resets its in-memory data on restart, so ticket IDs in a new demonstration may differ. GN monitors model usage; prefer the mocked tests below for repeatable development checks.
 
 ## Ticketing API
 
@@ -247,10 +305,17 @@ The automated tests use local `TestClient` and mocks / Pydantic AI testing model
 | --- | --- |
 | `tests/test_api.py` | 10 API tests covering CRUD, filtering, validation, `404`/`422`, and unchanged state after rejected updates |
 | `tests/test_agent.py` | 6 parameterized mocked tool scenarios: list, missing ticket, create, invalid status, resolve, delete; verifies tool arguments and results forwarded to the model |
-| `tests/test_cli.py` | 2 mocked CLI scenarios: message dispatch with usage limits and graceful handling when limits are exceeded |
+| `tests/test_cli.py` | 4 mocked CLI tests: message dispatch, usage-limit handling, and conversation logging enabled/disabled |
 
-These test counts reflect the implementation developed for this assessment; run the full suite in your own environment for the latest aggregate result. Mocked models verify wiring and tool-result propagation; **they do not establish whether GN's actual model chooses the right tools or explains failures well**.
+The latest reported full suite before the two conversation-logging tests had 18 passing tests; both added CLI tests subsequently passed separately. Run the full suite to confirm the current aggregate (expected: 20). Mocked models verify wiring and tool-result propagation; **they do not establish whether GN's actual model chooses the right tools or explains failures well**.
 
+
+Optional code quality checks:
+
+```bash
+python -m ruff check .
+python -m ruff format --check .
+```
 
 ## Logging and Observability
 
@@ -307,26 +372,6 @@ policies, and sensitive-data redaction.
 The current implementation prioritizes simplicity and local
 debugging for this assessment.
 
-
-### Live end-to-end scenarios
-
-The following six GN-required requests were exercised through the CLI against GN's hosted LLM and the running FastAPI server on **9 November 2026**, with appropriate responses observed:
-
-1. `Create a new ticket about a keyboard not working.` — ticket created with `OPEN` status.
-2. `Retrieve all open tickets.` — open ticket listed.
-3. `Get details for ticket 1.` — ticket details returned.
-4. `Update ticket 1 to have status PROGRESS.` — agent explained invalid status and listed allowed values from the API's `422` detail.
-5. `Update ticket 1 to RESOLVED, adding 'Replaced faulty cable' as the resolution.` — agent confirmed status and resolution.
-6. `Update ticket 999 to CLOSED.` — agent explained that the nonexistent ticket could not be updated (`404`).
-
-For a fresh demonstration, replace `1` with the actual created ticket ID. You can inspect final stored state via `GET /tickets/{ticket_id}` or Swagger UI without an LLM request. GN monitors usage, so keep live calls focused; use mocked tests during development.
-
-Optional code quality checks:
-
-```bash
-python -m ruff check .
-python -m ruff format --check .
-```
 
 ## Production considerations
 

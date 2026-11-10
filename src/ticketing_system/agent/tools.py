@@ -160,9 +160,18 @@ def update_ticket(
 
 
 def delete_ticket(ticket_id: int) -> dict:
-    """Delete a ticket by its ID."""
+    """Soft-delete a ticket, keeping it available for restoration."""
 
     return _request(
         method="DELETE",
         endpoint=f"/tickets/{ticket_id}",
+    )
+
+
+def restore_ticket(ticket_id: int) -> dict:
+    """Restore a previously soft-deleted ticket."""
+
+    return _request(
+        method="POST",
+        endpoint=f"/tickets/{ticket_id}/restore",
     )

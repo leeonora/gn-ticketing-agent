@@ -33,7 +33,7 @@ model = OpenAIChatModel(
     model_name,
     provider=OpenAIProvider(openai_client=client),
 )
-# make agent (simple prompts)
+
 agent = Agent(
     model,
     instructions=(
@@ -43,7 +43,17 @@ agent = Agent(
         "When a tool returns success=True and data=[], "
         "explain that no matching tickets exist. "
         "When a tool returns success=False, explain the "
-        "error using the information returned by the API."
+        "error using the information returned by the API. "
+        "Deleting a ticket is reversible: the API soft-deletes "
+        "tickets instead of permanently removing them. "
+        "After a successful deletion, inform the user that "
+        "the ticket can be restored. "
+        "If the user asks to undo a deletion, use the "
+        "restore_ticket tool with the appropriate ticket ID. "
+        "Use conversation history to identify the ticket "
+        "when possible, but ask for the ID if it is unclear. "
+        "Only report a ticket as deleted or restored when "
+        "the corresponding API tool returns success=True."
     ),
     model_settings={
         "openai_reasoning_effort": "none",
@@ -94,5 +104,11 @@ def update_ticket(
 
 @agent.tool_plain
 def delete_ticket(ticket_id: int) -> dict:
-    """Delete an existing ticket by its ID."""
+    """Soft-delete a ticket. The operation is reversible."""
     return tools.delete_ticket(ticket_id=ticket_id)
+
+
+@agent.tool_plain
+def restore_ticket(ticket_id: int) -> dict:
+    """Restore a previously deleted ticket by its ID."""
+    return tools.restore_ticket(ticket_id=ticket_id)

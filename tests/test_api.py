@@ -34,6 +34,7 @@ def test_create_ticket(client):
     assert ticket["title"] == "Keyboard not working"
     assert ticket["status"] == "OPEN"
     assert ticket["resolution"] is None
+    assert ticket["deleted"] is False
     assert "created" in ticket
 
 
@@ -59,7 +60,7 @@ def test_get_nonexistent_ticket(client):
     response = client.get("/tickets/999")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == ("Ticket with ID 999 not found.")
+    assert response.json()["detail"] == "Ticket with ID 999 not found."
 
 
 ### Testing ticket updates
@@ -110,7 +111,7 @@ def test_invalid_status(client):
     assert "RESOLVED" in detail
     assert "CLOSED" in detail
 
-    # Invalid updates shouldnt change the existing ticket
+    # Invalid updates should not change the existing ticket.
     unchanged = client.get(f"/tickets/{created['id']}")
     assert unchanged.json()["status"] == "OPEN"
 
@@ -124,7 +125,7 @@ def test_update_nonexistent_ticket(client):
     assert response.status_code == 404
 
 
-### Testing deleting tickets
+### Testing soft deletion
 
 
 def test_delete_ticket(client):
@@ -143,10 +144,158 @@ def test_delete_ticket(client):
     assert response.status_code == 204
     assert response.content == b""
 
-    # Verify that the ticket is actually gone.
+    # Deleted ticket is hidden from normal retrieval.
     response = client.get(f"/tickets/{ticket_id}")
+    assert response.status_code == 404
+
+    # The ticket still exists in storage.
+    stored_ticket = api_main.store.tickets[ticket_id]
+    assert stored_ticket.deleted is True
+    assert stored_ticket.title == "Broken mouse"
+
+
+def test_deleted_ticket_excluded_from_list(client):
+    first = client.post(
+        "/tickets",
+        json={
+            "title": "Broken keyboard",
+            "description": "Keyboard is unresponsive.",
+        },
+    ).json()
+
+    second = client.post(
+        "/tickets",
+        json={
+            "title": "Broken mouse",
+            "description": "Mouse is disconnected.",
+        },
+    ).json()
+
+    client.delete(f"/tickets/{first['id']}")
+
+    response = client.get("/tickets")
+    assert response.status_code == 200
+    assert [ticket["id"] for ticket in response.json()] == [second["id"]]
+
+    # Status filtering should also exclude deleted tickets.
+    response = client.get("/tickets", params={"status": "OPEN"})
+    assert response.status_code == 200
+    assert [ticket["id"] for ticket in response.json()] == [second["id"]]
+
+
+def test_cannot_update_deleted_ticket(client):
+    created = client.post(
+        "/tickets",
+        json={
+            "title": "Broken keyboard",
+            "description": "Keyboard is unresponsive.",
+        },
+    ).json()
+
+    ticket_id = created["id"]
+    client.delete(f"/tickets/{ticket_id}")
+
+    response = client.patch(
+        f"/tickets/{ticket_id}",
+        json={"status": "CLOSED"},
+    )
 
     assert response.status_code == 404
+    assert api_main.store.tickets[ticket_id].status.value == "OPEN"
+
+
+def test_delete_nonexistent_ticket(client):
+    response = client.delete("/tickets/999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Ticket with ID 999 not found."
+
+
+def test_delete_already_deleted_ticket(client):
+    created = client.post(
+        "/tickets",
+        json={
+            "title": "Broken keyboard",
+            "description": "Keyboard is unresponsive.",
+        },
+    ).json()
+
+    ticket_id = created["id"]
+
+    assert client.delete(f"/tickets/{ticket_id}").status_code == 204
+
+    response = client.delete(f"/tickets/{ticket_id}")
+
+    assert response.status_code == 404
+
+
+### Testing restoration
+
+
+def test_restore_deleted_ticket(client):
+    created = client.post(
+        "/tickets",
+        json={
+            "title": "Broken keyboard",
+            "description": "Keyboard is unresponsive.",
+        },
+    ).json()
+
+    ticket_id = created["id"]
+
+    # Resolve the ticket before deleting it.
+    client.patch(
+        f"/tickets/{ticket_id}",
+        json={
+            "status": "RESOLVED",
+            "resolution": "Replaced faulty cable",
+        },
+    )
+
+    client.delete(f"/tickets/{ticket_id}")
+
+    response = client.post(f"/tickets/{ticket_id}/restore")
+
+    assert response.status_code == 200
+
+    restored = response.json()
+
+    assert restored["id"] == ticket_id
+    assert restored["title"] == "Broken keyboard"
+    assert restored["description"] == "Keyboard is unresponsive."
+    assert restored["status"] == "RESOLVED"
+    assert restored["resolution"] == "Replaced faulty cable"
+    assert restored["created"] == created["created"]
+    assert restored["deleted"] is False
+
+    # The restored ticket is visible again.
+    response = client.get(f"/tickets/{ticket_id}")
+    assert response.status_code == 200
+    assert response.json() == restored
+
+
+def test_restore_nonexistent_ticket(client):
+    response = client.post("/tickets/999/restore")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Ticket with ID 999 not found."
+
+
+def test_restore_active_ticket(client):
+    created = client.post(
+        "/tickets",
+        json={
+            "title": "Broken keyboard",
+            "description": "Keyboard is unresponsive.",
+        },
+    ).json()
+
+    response = client.post(f"/tickets/{created['id']}/restore")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        f"Ticket with ID {created['id']} is not deleted."
+    )
 
 
 ### Testing filtering

@@ -10,7 +10,7 @@ class TicketStatus(str, Enum):
     CLOSED = "CLOSED"
 
 
-# complete ticket stored + returned by api
+# Complete ticket stored + returned by API
 class Ticket(BaseModel):
     id: int
     title: str = Field(min_length=1)
@@ -18,9 +18,10 @@ class Ticket(BaseModel):
     created: datetime
     status: TicketStatus = TicketStatus.OPEN
     resolution: str | None = None
+    deleted: bool = False
 
 
-# validates user data
+# Validates user data
 class TicketCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -28,7 +29,7 @@ class TicketCreate(BaseModel):
     description: str
 
 
-# defines which fields can be updated
+# Defines which fields can be updated
 class TicketUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

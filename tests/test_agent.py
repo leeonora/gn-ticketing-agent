@@ -103,7 +103,7 @@ from ticketing_system.agent.agent import agent
                 },
             },
         ),
-        # 6. Delete a ticket
+        # 6. Soft-delete a ticket
         (
             "delete_ticket",
             {"ticket_id": 1},
@@ -112,6 +112,44 @@ from ticketing_system.agent.agent import agent
                 "success": True,
                 "status_code": 204,
                 "data": None,
+            },
+        ),
+        # 7. Restore a deleted ticket
+        (
+            "restore_ticket",
+            {"ticket_id": 1},
+            {"ticket_id": 1},
+            {
+                "success": True,
+                "status_code": 200,
+                "data": {
+                    "id": 1,
+                    "title": "Keyboard not working",
+                    "status": "OPEN",
+                    "deleted": False,
+                },
+            },
+        ),
+        # 8. Restore a nonexistent ticket
+        (
+            "restore_ticket",
+            {"ticket_id": 999},
+            {"ticket_id": 999},
+            {
+                "success": False,
+                "status_code": 404,
+                "error": "Ticket with ID 999 not found.",
+            },
+        ),
+        # 9. Restore a ticket that is not deleted
+        (
+            "restore_ticket",
+            {"ticket_id": 1},
+            {"ticket_id": 1},
+            {
+                "success": False,
+                "status_code": 409,
+                "error": "Ticket with ID 1 is not deleted.",
             },
         ),
     ],

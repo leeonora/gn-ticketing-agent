@@ -1,6 +1,6 @@
 # GN Ticketing Agent
 
-A local support-ticketing system with a **FastAPI REST API** and a **Pydantic AI agent** that can create, retrieve, filter, update, and delete tickets through natural-language requests. The agent uses HTTP tools to interact with the API and turns business-rule errors into useful feedback instead of crashing.
+A local support-ticketing system with a **FastAPI REST API** and a **Pydantic AI agent** that can create, retrieve, filter, update, soft-delete, and restore tickets through natural-language requests. The agent uses HTTP tools to interact with the API and turns business-rule errors into useful feedback instead of crashing.
 
 Built for GN's *End-to-End Fault-Tolerant GenAI Agent System* take-home assessment.
 
@@ -8,8 +8,8 @@ Built for GN's *End-to-End Fault-Tolerant GenAI Agent System* take-home assessme
 
 | Assessment component | Status |
 | --- | --- |
-| Part 1 — Mock Ticketing API | Implemented; API tests passed |
-| Part 2 — GenAI agent, HTTP tools, and CLI | Implemented; six required live scenarios demonstrated |
+| Part 1 — Mock Ticketing API | Implemented; CRUD, soft deletion, restoration, and API tests passed |
+| Part 2 — GenAI agent, HTTP tools, and CLI | Implemented; six required scenarios and a live deletion/undo conversation demonstrated |
 | Part 3 — LLM pull-request reviewer / GitHub Actions | Not yet implemented |
 | Part 4 — Azure Terraform skeleton | Not yet implemented |
 | Optional MCP server | Not implemented |
@@ -37,12 +37,12 @@ CLI (agent/cli.py)  <--- conversation history, usage limits
 Pydantic AI agent (agent/agent.py) <----> GN-hosted LLM (gpt-6-luna)
   |                  selects tools and writes responses
   v
-Registered tools: list / get / create / update / delete
+Registered tools: list / get / create / update / delete / restore
   |
   v
 HTTP client and error handling (agent/tools.py)
   |                   ^
-  | HTTP requests     | JSON / HTTP 404 / 422
+  | HTTP requests     | JSON / HTTP 404 / 409 / 422
   v                   |
 FastAPI (api/main.py)
   |-- Pydantic request/response models (api/models.py)
@@ -244,6 +244,23 @@ Ticket with ID 999 not found.
 
 **Result:** All six scenarios were demonstrated successfully, including tool selection, HTTP-backed ticket operations, and interpretation of actual API `404` and `422` errors. The mock API resets its in-memory data on restart, so ticket IDs in a new demonstration may differ. GN monitors model usage; prefer the mocked tests below for repeatable development checks.
 
+### Live soft-delete and undo demonstration (10 November 2026)
+
+A second live test using GN's hosted model demonstrated the following successful conversation (response wording is recorded from the terminal):
+
+```text
+You: Create a ticket about a broken keyboard.
+Agent: Created ticket #1, “Broken keyboard.” It’s currently open.
+
+You: Delete that ticket.
+Agent: Ticket #1 has been deleted. This is reversible, so it can be restored if needed.
+
+You: Actually, can you undo that?
+Agent: Ticket #1 has been restored.
+```
+
+The HTTP tools logged successful `201`, `204`, and `200` responses for these actions. A direct `GET /tickets/1` subsequently returned `200 OK` and `"deleted": false`, confirming that restoration changed actual API state. This interaction spent GN tokens; the repeatable automated tests below use mocks.
+
 ## Ticketing API
 
 | Method | Endpoint | Purpose | Successful response |
@@ -253,9 +270,10 @@ Ticket with ID 999 not found.
 | `GET` | `/tickets` | List tickets; optional `?status=OPEN` filter | `200 OK` |
 | `GET` | `/tickets/{ticket_id}` | Retrieve a ticket | `200 OK` |
 | `PATCH` | `/tickets/{ticket_id}` | Partially update a ticket | `200 OK` |
-| `DELETE` | `/tickets/{ticket_id}` | Delete a ticket | `204 No Content` |
+| `DELETE` | `/tickets/{ticket_id}` | Soft-delete (hide) a ticket | `204 No Content` |
+| `POST` | `/tickets/{ticket_id}/restore` | Restore a soft-deleted ticket | `200 OK` |
 
-Ticket properties are `id`, `title`, `description`, `created`, `status`, and `resolution`. New tickets start with status `OPEN`, a generated ID, and a UTC creation timestamp. Valid statuses are `OPEN`, `RESOLVED`, and `CLOSED`.
+Ticket properties are `id`, `title`, `description`, `created`, `status`, `resolution`, and `deleted` (a boolean). New tickets start with status `OPEN`, `deleted=false`, a generated ID, and a UTC creation timestamp. Valid statuses remain `OPEN`, `RESOLVED`, and `CLOSED`; deletion is tracked separately and is not a fourth status.
 
 Example direct API calls (do not use GN LLM tokens):
 
@@ -273,13 +291,25 @@ curl -X PATCH http://127.0.0.1:8000/tickets/1 \
   -d '{"status":"RESOLVED","resolution":"Replaced faulty cable"}'
 
 curl -i -X DELETE http://127.0.0.1:8000/tickets/1
+
+# Undo the deletion; returns the restored ticket
+curl -i -X POST http://127.0.0.1:8000/tickets/1/restore
 ```
+
+### Soft deletion and restoration
+
+`DELETE /tickets/{ticket_id}` marks the ticket as `deleted=true` instead of removing it from the in-memory store. Deleted tickets are omitted from `GET /tickets` (including status-filtered lists), and normal retrieval and updates of deleted tickets return `404`. A second attempt to delete an already deleted ticket also returns `404`.
+
+`POST /tickets/{ticket_id}/restore` changes `deleted` back to `false`, preserving the original ID, title, description, creation time, status, and resolution. Restoration returns `200` with the ticket; a nonexistent ID returns `404`, and attempting to restore an active ticket returns `409 Conflict`. Ordinary ticket updates cannot change `deleted` directly. Deletion and restoration events are logged.
+
+**Limitation:** This is an in-memory mock. Both active and soft-deleted tickets are lost when the API server restarts. There is no timed retention period or permanent-deletion endpoint. For production, recovery would require durable storage and an appropriate retention policy.
 
 ### Error handling
 
 The API enforces its rules and returns HTTP errors with details:
 
-- **404:** nonexistent ticket ID (e.g. `Ticket with ID 999 not found.`)
+- **404:** nonexistent ticket ID (e.g. `Ticket with ID 999 not found.`), or a deleted ticket accessed through normal retrieval/update/deletion routes
+- **409:** attempting to restore a ticket that has not been deleted
 - **422:** invalid status in an update (e.g. `PROGRESS`, with `OPEN`, `RESOLVED`, and `CLOSED` listed as valid values)
 - **422:** invalid input such as an empty title or an invalid update body
 
@@ -303,12 +333,13 @@ The automated tests use local `TestClient` and mocks / Pydantic AI testing model
 
 | Test file | Coverage |
 | --- | --- |
-| `tests/test_api.py` | 10 API tests covering CRUD, filtering, validation, `404`/`422`, and unchanged state after rejected updates |
-| `tests/test_agent.py` | 6 parameterized mocked tool scenarios: list, missing ticket, create, invalid status, resolve, delete; verifies tool arguments and results forwarded to the model |
+| `tests/test_api.py` | 17 API tests: CRUD, filtering, validation, soft deletion, hidden tickets, restoration, `404`/`409`/`422`, and preservation of ticket data |
+| `tests/test_agent.py` | 9 parameterized mocked tool scenarios: list, missing ticket, create, invalid status, resolve, delete, successful restore, missing restore, and active-ticket restore; checks tool arguments and returned results |
 | `tests/test_cli.py` | 4 mocked CLI tests: message dispatch, usage-limit handling, and conversation logging enabled/disabled |
 
-The latest reported full suite before the two conversation-logging tests had 18 passing tests; both added CLI tests subsequently passed separately. Run the full suite to confirm the current aggregate (expected: 20). Mocked models verify wiring and tool-result propagation; **they do not establish whether GN's actual model chooses the right tools or explains failures well**.
+**Latest locally reported verification (10 November 2026): 30 tests passed** with one non-failing Python 3.13/Pydantic Graph deprecation warning. Ruff lint and formatting checks also passed. The tests do not invoke GN's model; mocked tool calls verify execution and result propagation, not the real LLM's language understanding.
 
+A separate live GN interaction verified conversational soft deletion and undo. The agent created ticket #1 (`POST /tickets`, `201`), soft-deleted it after *“Delete that ticket”* (`DELETE /tickets/1`, `204`), and restored it after *“Actually, can you undo that?”* (`POST /tickets/1/restore`, `200`). A subsequent direct `GET /tickets/1` returned `200` with `deleted=false`. This demonstrates actual conversational context handling and API-backed recovery, beyond the mocked tests.
 
 Optional code quality checks:
 
@@ -326,7 +357,7 @@ Logs are written to both the console and `logs/ticketing.log`.
 
 ### Logged Events
 
-- API operations, including ticket creation, retrieval, updates, and deletion.
+- API operations, including ticket creation, retrieval, updates, soft deletion, and restoration.
 - HTTP requests, response status codes, and execution times.
 - Expected business errors (404 and 422) at WARNING level.
 - Network and server failures at ERROR level.
@@ -375,7 +406,7 @@ debugging for this assessment.
 
 ## Production considerations
 
-**Persistence:** The in-memory dictionary is deliberately simple but loses tickets after restarts and cannot share state across server processes. In production, use a database while preserving API contracts and error semantics.
+**Persistence and recovery:** The in-memory dictionary is deliberately simple but loses both active and soft-deleted tickets after restarts and cannot share state across server processes. Soft deletion guards against accidental removals only while the server remains running. In production, use a durable database, a defined retention policy, and appropriate auditing while preserving API contracts and error semantics.
 
 Further production improvements would include authentication/authorization, explicit confirmation for destructive operations, stronger timeout/retry policy, durable audit logs, observability, and persisted conversations. The optional requirement to require a resolution note when resolving a ticket was not implemented in this mock API.
 

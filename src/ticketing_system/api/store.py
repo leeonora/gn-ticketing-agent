@@ -24,13 +24,20 @@ class TicketStore:
         return ticket
 
     def get(self, ticket_id: int) -> Ticket | None:
-        return self.tickets.get(ticket_id)
+        ticket = self.tickets.get(ticket_id)
+
+        # Deleted tickets should be invisible to normal retrieval.
+        if ticket is None or ticket.deleted:
+            return None
+
+        return ticket
 
     def get_all(
         self,
         status: TicketStatus | None = None,
     ) -> list[Ticket]:
-        tickets = list(self.tickets.values())
+        # Exclude deleted tickets from normal listings.
+        tickets = [ticket for ticket in self.tickets.values() if not ticket.deleted]
 
         if status is not None:
             tickets = [ticket for ticket in tickets if ticket.status == status]
@@ -70,8 +77,21 @@ class TicketStore:
         return updated_ticket
 
     def delete(self, ticket_id: int) -> bool:
-        if ticket_id not in self.tickets:
+        ticket = self.get(ticket_id)
+
+        if ticket is None:
             return False
 
-        del self.tickets[ticket_id]
+        # Soft delete: preserve the ticket instead of removing it.
+        ticket.deleted = True
         return True
+
+    def restore(self, ticket_id: int) -> Ticket | None:
+        # Access storage directly because get() hides deleted tickets.
+        ticket = self.tickets.get(ticket_id)
+
+        if ticket is None or not ticket.deleted:
+            return None
+
+        ticket.deleted = False
+        return ticket

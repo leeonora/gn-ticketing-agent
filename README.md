@@ -34,18 +34,43 @@ The ticketing agent selects tools, but **ticket operations are performed through
 
 **Prerequisites:** Python 3.11+, Git, and an authorized GN API key for live agent use. Local tests and the mock API do not require the GN key.
 
+Clone the repository and create a virtual environment. Choose the commands for your shell:
+
+**macOS / Linux (Bash or Zsh):**
+
 ```bash
 git clone https://github.com/leeonora/gn-ticketing-agent.git
 cd gn-ticketing-agent
-python -m venv .venv
-source .venv/bin/activate          # Bash / Zsh (macOS/Linux)
-# Fish: source .venv/bin/activate.fish
-# Windows PowerShell: .venv\Scripts\Activate.ps1
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install -e ".[dev]"
-cp .env.example .env
+python -c "import shutil; shutil.copyfile('.env.example', '.env')"
 ```
 
-Set the following values in your local `.env` (the repository's `.env.example` contains placeholders only):
+**macOS / Linux (Fish):**
+
+```fish
+git clone https://github.com/leeonora/gn-ticketing-agent.git
+cd gn-ticketing-agent
+python3 -m venv .venv
+source .venv/bin/activate.fish
+python -m pip install -e ".[dev]"
+python -c "import shutil; shutil.copyfile('.env.example', '.env')"
+```
+
+**Windows (PowerShell):**
+
+```powershell
+git clone https://github.com/leeonora/gn-ticketing-agent.git
+cd gn-ticketing-agent
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -c "import shutil; shutil.copyfile('.env.example', '.env')"
+```
+
+The Windows instructions use the virtual environment's Python directly, so PowerShell script execution policy does not need to be changed. On Windows, you can run `.\.venv\Scripts\gn-ticketing.exe` without activating the environment.
+
+Edit your local `.env` and set the following values (the repository's `.env.example` contains placeholders only):
 
 ```dotenv
 OPENAI_API_KEY=your_gn_api_key_here
@@ -57,23 +82,61 @@ LOG_CONVERSATIONS=false
 
 Keep `.env` and credentials out of Git. The GN integration uses an OpenAI-compatible client with an `api-key` header; `openai_reasoning_effort="none"` is used for compatibility with GN's Chat Completions/function-tool behavior.
 
-**Terminal 1 — start the API:**
+### Run the API and agent together
+
+With the virtual environment active on macOS/Linux, start the complete local application with **one command**:
+
+```bash
+gn-ticketing
+```
+
+On Windows PowerShell, use:
+
+```powershell
+.\.venv\Scripts\gn-ticketing.exe
+```
+
+The launcher starts FastAPI on `127.0.0.1:8000`, waits for its `/health` endpoint, and opens the interactive agent CLI in the same terminal. The agent still communicates with the API through HTTP. Type requests such as `Create a ticket about a broken keyboard`, `List open tickets`, or `Restore ticket 1`. Use `exit` or `quit` to end the session; the launcher then stops the API.
+
+API docs (while running): <http://127.0.0.1:8000/docs> · Health check: <http://127.0.0.1:8000/health>
+
+The CLI retains conversation history across turns and applies per-run limits of five model requests and five tool calls. These are execution limits, **not** a guaranteed token or cost budget. Tickets are stored in memory and disappear when the API shuts down. The launcher's API startup log is written to `logs/api-server.log`.
+
+### Troubleshooting
+
+If your shell reports `gn-ticketing: command not found` or Fish says `Unknown command: gn-ticketing`, make sure the virtual environment is active and **reinstall the package** from the repository root to register the console command:
+
+```bash
+python -m pip install -e ".[dev]"
+```
+
+On Windows without activation, run `.\.venv\Scripts\python.exe -m pip install -e ".[dev]"` in PowerShell. The command requires a `[project.scripts]` entry in `pyproject.toml` mapping `gn-ticketing` to `ticketing_system.run:main`. Adding that entry to an already installed project requires reinstalling it; editing ordinary Python source files afterward generally does not.
+
+You can also start the launcher without the console-script command:
+
+```bash
+python -m ticketing_system.run
+```
+
+On Windows without activation, use `.\.venv\Scripts\python.exe -m ticketing_system.run`. If startup fails, check `logs/api-server.log`, ensure `.env` exists, and make sure port `8000` is not already in use.
+
+For Fish, you can suppress Pydantic AI's informational banner with `set -x PYDANTIC_AI_NO_BANNER 1` before starting the launcher.
+
+### Development: run API and CLI separately (optional)
+
+The original two-terminal workflow is still available for development, including Uvicorn's auto-reload functionality.
+
+**Terminal 1 — API:**
 
 ```bash
 uvicorn ticketing_system.api.main:app --reload
 ```
 
-API docs: <http://127.0.0.1:8000/docs> · Health check: <http://127.0.0.1:8000/health>
-
-**Terminal 2 — start the conversational agent:**
+**Terminal 2 — agent:**
 
 ```bash
 python -m ticketing_system.agent.cli
 ```
-
-Type requests such as `Create a ticket about a broken keyboard`, `List open tickets`, or `Restore ticket 1`. Use `exit` or `quit` to end the session. The CLI retains conversation history across turns and applies per-run limits of five model requests and five tool calls. These are execution limits, **not** a guaranteed token or cost budget.
-
-For Fish, you can suppress Pydantic AI's informational banner before starting the CLI with `set -x PYDANTIC_AI_NO_BANNER 1`.
 
 ## Part 1 — Ticketing API
 

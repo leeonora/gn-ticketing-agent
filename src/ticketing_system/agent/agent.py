@@ -53,7 +53,13 @@ agent = Agent(
         "Use conversation history to identify the ticket "
         "when possible, but ask for the ID if it is unclear. "
         "Only report a ticket as deleted or restored when "
-        "the corresponding API tool returns success=True."
+        "the corresponding API tool returns success=True. "
+        "Never invent or infer resolution notes. "
+        "When resolving a ticket, a resolution note must be "
+        "explicitly provided by the user. "
+        "If no resolution note has been provided for the "
+        "requested resolution, ask the user for one before "
+        "calling the update tool."
     ),
     model_settings={
         "openai_reasoning_effort": "none",

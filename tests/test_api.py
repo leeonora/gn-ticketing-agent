@@ -125,6 +125,79 @@ def test_update_nonexistent_ticket(client):
     assert response.status_code == 404
 
 
+@pytest.mark.parametrize("resolution", [None, "", "   "])
+def test_resolving_requires_resolution_note(client, resolution):
+    created = client.post(
+        "/tickets",
+        json={"title": "Broken keyboard", "description": "Keyboard is unresponsive."},
+    ).json()
+    ticket_id = created["id"]
+
+    payload = {"status": "RESOLVED"}
+    if resolution is not None:
+        payload["resolution"] = resolution
+
+    response = client.patch(f"/tickets/{ticket_id}", json=payload)
+
+    assert response.status_code == 422
+    assert "resolution note is required" in response.json()["detail"]
+
+    unchanged = client.get(f"/tickets/{ticket_id}").json()
+    assert unchanged["status"] == "OPEN"
+    assert unchanged["resolution"] is None
+
+
+def test_cannot_remove_resolution_note_from_resolved_ticket(client):
+    created = client.post(
+        "/tickets",
+        json={"title": "Broken keyboard", "description": "Keyboard is unresponsive."},
+    ).json()
+    ticket_id = created["id"]
+    resolved = client.patch(
+        f"/tickets/{ticket_id}",
+        json={"status": "RESOLVED", "resolution": "Replaced faulty cable"},
+    )
+    assert resolved.status_code == 200
+
+    response = client.patch(f"/tickets/{ticket_id}", json={"resolution": "   "})
+
+    assert response.status_code == 422
+    unchanged = client.get(f"/tickets/{ticket_id}").json()
+    assert unchanged["status"] == "RESOLVED"
+    assert unchanged["resolution"] == "Replaced faulty cable"
+
+
+def test_resolved_ticket_retains_note_on_unrelated_update(client):
+    created = client.post(
+        "/tickets",
+        json={"title": "Broken keyboard", "description": "Keyboard is unresponsive."},
+    ).json()
+    ticket_id = created["id"]
+    client.patch(
+        f"/tickets/{ticket_id}",
+        json={"status": "RESOLVED", "resolution": "Replaced faulty cable"},
+    )
+
+    response = client.patch(f"/tickets/{ticket_id}", json={"title": "Fixed keyboard"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "RESOLVED"
+    assert response.json()["resolution"] == "Replaced faulty cable"
+
+
+def test_nonresolved_ticket_does_not_require_resolution_note(client):
+    created = client.post(
+        "/tickets",
+        json={"title": "Broken keyboard", "description": "Keyboard is unresponsive."},
+    ).json()
+
+    response = client.patch(f"/tickets/{created['id']}", json={"status": "CLOSED"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "CLOSED"
+    assert response.json()["resolution"] is None
+
+
 ### Testing soft deletion
 
 
@@ -320,7 +393,7 @@ def test_filter_tickets_by_status(client):
 
     client.patch(
         f"/tickets/{second['id']}",
-        json={"status": "RESOLVED"},
+        json={"status": "RESOLVED", "resolution": "Replaced monitor cable"},
     )
 
     response = client.get("/tickets", params={"status": "OPEN"})

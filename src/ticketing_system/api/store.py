@@ -68,6 +68,16 @@ class TicketStore:
         ticket_data = ticket.model_dump()
         ticket_data.update(update_data)
 
+        # A resolved ticket must have a meaningful resolution note.
+        if ticket_data["status"] == TicketStatus.RESOLVED and (
+            not isinstance(ticket_data["resolution"], str)
+            or not ticket_data["resolution"].strip()
+        ):
+            raise ValueError(
+                "A resolution note is required when setting a ticket's "
+                "status to RESOLVED."
+            )
+
         # Validate the complete updated ticket.
         updated_ticket = Ticket.model_validate(ticket_data)
 

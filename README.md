@@ -6,12 +6,12 @@ A mock support-ticketing API, a natural-language agent, and an automated AI pull
 
 | Part | Implementation | Verification |
 | --- | --- | --- |
-| **1 — Ticketing API** | FastAPI CRUD, filtering, validation, soft delete and restore | 17 API tests passed |
-| **2 — GenAI agent** | Pydantic AI CLI with six HTTP-backed tools | 9 agent tests, 4 CLI tests; live GN scenarios demonstrated |
-| **3 — PR review bot** | GitHub Actions + Python + Pydantic AI; posts one review comment per run | 7 tests passed; [PR #1 successfully reviewed](https://github.com/leeonora/gn-ticketing-agent/pull/1) |
-| **4 — Azure Terraform** | Resource group, Linux App Service plan, and Linux Web App | `terraform init` and `terraform validate` succeeded (10 November 2026) |
+| **1. Ticketing API** | FastAPI CRUD, filtering, validation (including required resolution notes), soft delete and restore | 23 API tests passed |
+| **2. GenAI agent** | Pydantic AI CLI with six HTTP-backed tools | 9 agent tests, 4 CLI tests; live GN scenarios demonstrated |
+| **3. PR review bot** | GitHub Actions + Python + Pydantic AI; posts one review comment per run | 7 tests passed; [PR #1 successfully reviewed](https://github.com/leeonora/gn-ticketing-agent/pull/1) |
+| **4. Azure Terraform** | Resource group, Linux App Service plan, and Linux Web App | `terraform init` and `terraform validate` succeeded (11 November 2026) |
 
-**Latest local verification (10 November 2026): 37 tests passed**, Ruff lint checks passed. One non-failing third-party Python 3.13/Pydantic Graph deprecation warning remains. Optional MCP server not implemented.
+**Latest local verification (11 November 2026): 43 tests passed**, Ruff lint and formatting checks passed. One non-failing third-party Python 3.13/Pydantic Graph deprecation warning remains.
 
 ## Stack and architecture
 
@@ -29,6 +29,14 @@ Pull request → GitHub Actions → scripts/analyze_pr.py
 ```
 
 The ticketing agent selects tools, but **ticket operations are performed through HTTP** rather than accessing the ticket store directly. FastAPI enforces validation and returns errors for the agent to explain to users.
+
+### Ticketing agent architecture
+
+![Ticketing agent architecture](docs/diagrams/architecture_ticketing_agent.png)
+
+### PR review agent architecture
+
+![PR review agent architecture](docs/diagrams/architecture_PR_agent.png)
 
 ## Local setup
 
@@ -84,7 +92,7 @@ Keep `.env` and credentials out of Git. The GN integration uses an OpenAI-compat
 
 ### Run the API and agent together
 
-With the virtual environment active on macOS/Linux, start the complete local application with **one command**:
+With the virtual environment active on macOS/Linux, start the complete local application with one command:
 
 ```bash
 gn-ticketing
@@ -96,11 +104,13 @@ On Windows PowerShell, use:
 .\.venv\Scripts\gn-ticketing.exe
 ```
 
-The launcher starts FastAPI on `127.0.0.1:8000`, waits for its `/health` endpoint, and opens the interactive agent CLI in the same terminal. The agent still communicates with the API through HTTP. Type requests such as `Create a ticket about a broken keyboard`, `List open tickets`, or `Restore ticket 1`. Use `exit` or `quit` to end the session; the launcher then stops the API.
+For easier local setup and evaluation, `run.py` was created to provide a one-command launcher registered as `gn-ticketing` through `[project.scripts]` in `pyproject.toml`. It starts FastAPI on `127.0.0.1:8000`, waits for the `/health` check to succeed, and opens the interactive agent CLI. Exiting the CLI shuts down the API automatically, so users do not need to manage two terminals. The agent still communicates with the API through HTTP, preserving the client/server separation.
+
+Try requests such as `Create a ticket about a broken keyboard`, `List open tickets`, or `Restore ticket 1`. Use `exit` or `quit` to end the session.
 
 API docs (while running): <http://127.0.0.1:8000/docs> · Health check: <http://127.0.0.1:8000/health>
 
-The CLI retains conversation history across turns and applies per-run limits of five model requests and five tool calls. These are execution limits, **not** a guaranteed token or cost budget. Tickets are stored in memory and disappear when the API shuts down. The launcher's API startup log is written to `logs/api-server.log`.
+The CLI retains conversation history across turns and applies per-run limits of five model requests and five tool calls. These are execution limits rather than a guaranteed token or cost budget. Tickets are stored in memory and disappear when the API shuts down. The launcher's API startup log is written to `logs/api-server.log`.
 
 ### Troubleshooting
 
@@ -122,23 +132,23 @@ On Windows without activation, use `.\.venv\Scripts\python.exe -m ticketing_syst
 
 For Fish, you can suppress Pydantic AI's informational banner with `set -x PYDANTIC_AI_NO_BANNER 1` before starting the launcher.
 
-### Development: run API and CLI separately (optional)
+### Alternative setup: run the API and CLI separately
 
-The original two-terminal workflow is still available for development, including Uvicorn's auto-reload functionality.
+If the one-command launcher does not work in your environment, or you want to debug or study the components independently, use the original two-terminal workflow below. It also enables Uvicorn's auto-reload functionality during development. The same virtual environment, installed dependencies, and `.env` configuration described above are required.
 
-**Terminal 1 — API:**
+**Terminal 1: API:**
 
 ```bash
 uvicorn ticketing_system.api.main:app --reload
 ```
 
-**Terminal 2 — agent:**
+**Terminal 2: agent:**
 
 ```bash
 python -m ticketing_system.agent.cli
 ```
 
-## Part 1 — Ticketing API
+## Part 1: Ticketing API
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
@@ -150,7 +160,7 @@ python -m ticketing_system.agent.cli
 | `DELETE` | `/tickets/{id}` | Soft-delete (`204`) |
 | `POST` | `/tickets/{id}/restore` | Restore deleted ticket (`200`) |
 
-Tickets contain `id`, `title`, `description`, UTC `created`, `status`, `resolution`, and `deleted`. Status must be `OPEN`, `RESOLVED`, or `CLOSED` (invalid updates return **422**). Missing/deleted tickets return **404** on normal operations; restoring an active ticket returns **409**. Updates are validated before saving so invalid changes do not partially apply.
+Tickets contain `id`, `title`, `description`, UTC `created`, `status`, `resolution`, and `deleted`. Status must be `OPEN`, `RESOLVED`, or `CLOSED` (invalid updates return **422**). Missing/deleted tickets return **404** on normal operations; restoring an active ticket returns **409**. **Resolution notes are required for `RESOLVED` tickets:** a ticket cannot be updated to `RESOLVED` without a non-empty, non-whitespace resolution note. An existing valid note may be retained on a later update. Missing or blank notes return **422** with a clear error message. Updates are validated before saving so invalid changes do not partially apply.
 
 Deletion sets `deleted=true`, hides the ticket from normal retrieval/listing, and allows restoration with its original data. **Storage is in memory**: restarting the server loses active and deleted tickets alike.
 
@@ -161,21 +171,30 @@ curl -X POST http://127.0.0.1:8000/tickets \
   -H 'Content-Type: application/json' \
   -d '{"title":"Broken keyboard","description":"Keys are unresponsive"}'
 curl 'http://127.0.0.1:8000/tickets?status=OPEN'
+curl -i -X PATCH http://127.0.0.1:8000/tickets/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"RESOLVED","resolution":"Replaced faulty cable"}'
 curl -i -X DELETE http://127.0.0.1:8000/tickets/1
 curl -i -X POST http://127.0.0.1:8000/tickets/1/restore
 ```
 
-Replace `1` with an ID that exists in your current server session.
+Replace `1` with an ID that exists in your current server session. Omitting `resolution` when resolving a ticket without an existing note returns **422**:
 
-## Part 2 — Natural-language ticketing agent
+```json
+{"detail":"A resolution note is required when setting a ticket's status to RESOLVED."}
+```
 
-The CLI's Pydantic AI agent registers six HTTPX-backed tools: `list_tickets`, `get_ticket`, `create_ticket`, `update_ticket`, `delete_ticket`, and `restore_ticket`. Tool results contain success/error status and actual API error details; the agent explains these to the user instead of inventing a successful operation.
+The failed update leaves the ticket unchanged.
+
+## Part 2: Natural-language ticketing agent
+
+The CLI's Pydantic AI agent registers six HTTPX-backed tools: `list_tickets`, `get_ticket`, `create_ticket`, `update_ticket`, `delete_ticket`, and `restore_ticket`. Tool results contain success/error status and actual API error details (including missing resolution notes); the agent can explain these to the user instead of inventing a successful operation.
 
 **Live GN verification (9 November 2026):** All six required assessment scenarios succeeded: create a keyboard ticket, list open tickets, retrieve details, reject `PROGRESS` with valid statuses, resolve with a note, and report a nonexistent ticket (`404`).
 
 **Live GN verification (10 November 2026):** In one multi-turn conversation, the agent created a ticket, soft-deleted it after “Delete that ticket,” and restored it after “Actually, can you undo that?” Direct API retrieval confirmed `deleted=false`. These were live LLM/API interactions; repeatable tests use mocks instead.
 
-## Part 3 — Automated PR review
+## Part 3: Automated PR review
 
 On pull requests **opened** or **synchronized**, `.github/workflows/pr_review.yml` runs `scripts/analyze_pr.py`. The script retrieves the diff from GitHub, sends it to a dedicated Pydantic AI reviewer using GN's model, and posts **one general PR comment per successful execution** with a summary and suggestions. It does not execute PR code.
 
@@ -185,7 +204,7 @@ On pull requests **opened** or **synchronized**, `.github/workflows/pr_review.ym
 
 The reviewer limits input to the first **20,000 characters** of the diff and to **one model request per run**. Very large diffs may be reviewed only partially; new workflow runs create new comments rather than updating an earlier one. Model-generated feedback is advisory.
 
-## Part 4 — Azure Terraform skeleton
+## Part 4: Azure Terraform skeleton
 
 The `infra/` directory defines a minimal potential Azure hosting setup for the Part 1 FastAPI service:
 
@@ -220,11 +239,11 @@ python -m ruff format --check .
 
 | Tests | Cases | What they check |
 | --- | ---: | --- |
-| `tests/test_api.py` | 17 | CRUD, filtering, validation, delete/restore, HTTP errors |
+| `tests/test_api.py` | 23 | CRUD, filtering, resolution-note validation, delete/restore, HTTP errors |
 | `tests/test_agent.py` | 9 | Mocked registered tool calls and result forwarding |
 | `tests/test_cli.py` | 4 | CLI interaction, limits, optional conversation logging |
 | `tests/test_pr_review.py` | 7 | Mocked GitHub diff/comment HTTP calls and review invocation |
-| **Total** | **37** | **All passed locally; no GN calls in tests** |
+| **Total** | **43** | **All passed locally; no GN calls in tests** |
 
 ## Logging
 
@@ -232,8 +251,10 @@ Console and rotating logs (`logs/ticketing.log`) record API/tool operations, HTT
 
 `LOG_CONVERSATIONS=false` by default; set it to `true` in local `.env` to log user prompts and final responses. Only enable it with nonsensitive test data; previously captured text is not automatically erased when the setting is disabled. File logging is intended for local development, not multiprocess production logging.
 
-## Part 5 (optional) — Production design decision
+## Part 5 (optional): Production design decision
 
-The most important production change would be **persistent storage** with a defined deletion-retention policy: the current in-memory store loses all tickets on restart. Other production needs include authentication/authorization, audit trails, stronger observability, and safeguards around destructive actions. The optional rule requiring resolution notes was not implemented.
+The most important production change would be **persistent storage** with a defined deletion-retention policy: the current in-memory store loses all tickets on restart. Other production needs include authentication/authorization, audit trails, stronger observability, and safeguards around destructive actions. The optional assessment rule requiring resolution notes for resolved tickets **is implemented**.
 
-The optional MCP server (Part 2 bonus) was not implemented. The Azure infrastructure remains intentionally undeployed.
+**MCP server (Part 2 bonus):** The optional MCP integration was not implemented because the agent already interacts with the ticketing API through dedicated HTTP-backed tools. MCP could be introduced if interoperability with other MCP-compatible clients becomes a requirement.
+
+**Azure deployment (Part 4):** The Terraform configuration was intentionally not deployed because the assessment requires valid infrastructure definitions, not provisioned cloud resources. `terraform init` and `terraform validate` succeeded locally. Avoiding deployment keeps the solution within scope and prevents unnecessary cloud costs.

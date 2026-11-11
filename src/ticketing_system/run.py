@@ -1,3 +1,5 @@
+import getpass
+import os
 import socket
 import subprocess
 import sys
@@ -6,10 +8,53 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
+from dotenv import load_dotenv, set_key
+
 HOST = "127.0.0.1"
 PORT = 8000
 HEALTH_URL = f"http://{HOST}:{PORT}/health"
 STARTUP_TIMEOUT = 15
+EXAMPLE_KEYS = {
+    "your_api_key_here",
+    "your_gn_api_key_here",
+    "your_subscription_key",
+    "test-key-not-for-production",
+}
+
+
+def ensure_api_key() -> bool:
+    """Prompt for a missing example key before starting the agent."""
+    load_dotenv(dotenv_path=Path.cwd() / ".env")
+    key = os.getenv("OPENAI_API_KEY", "").strip()
+    if key and key.lower() not in EXAMPLE_KEYS:
+        return True
+
+    if not sys.stdin.isatty():
+        print("Missing OPENAI_API_KEY. Set it in .env or run from a terminal.")
+        return False
+
+    try:
+        key = getpass.getpass("Enter your GN API key (input hidden): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nAPI key entry cancelled.")
+        return False
+
+    if not key or key.lower() in EXAMPLE_KEYS:
+        print("No valid API key entered. Add it to .env and try again.")
+        return False
+
+    os.environ["OPENAI_API_KEY"] = key
+    dotenv_path = Path.cwd() / ".env"
+    try:
+        if dotenv_path.is_symlink():
+            raise OSError("Refusing to replace a symlinked .env file")
+        set_key(dotenv_path, "OPENAI_API_KEY", key)
+        dotenv_path.chmod(0o600)
+    except OSError as exc:
+        print(f"Could not save the key to .env ({exc}). It will work for this run.")
+    else:
+        print("API key saved to .env for future runs.")
+    return True
 
 
 def wait_for_api(process: subprocess.Popen) -> None:
@@ -34,8 +79,7 @@ def wait_for_api(process: subprocess.Popen) -> None:
 
 def main() -> int:
     """Start the API, run the agent CLI, then shut down the API."""
-    if not Path(".env").is_file():
-        print("Missing .env file. Copy .env.example to .env and configure it.")
+    if not ensure_api_key():
         return 1
 
     try:

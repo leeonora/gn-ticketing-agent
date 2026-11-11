@@ -6,7 +6,7 @@ To try it, start with the [installation instructions](#local-setup). For the big
 
 ## Local setup
 
-**Prerequisites:** [uv](https://docs.astral.sh/uv/getting-started/installation/), Git, and an authorized GN API key for live agent use. uv can install a compatible Python version if needed. Local tests and the mock API do not require the GN key.
+**Prerequisites:** Git and an authorized GN API key for live agent use. The recommended setup uses [uv](https://docs.astral.sh/uv/getting-started/installation/), which can install a compatible Python version. If you don't have or prefer not to use uv, see [Alternative installation: pip](#install-with-pip). Local tests and the mock API do not require the GN key.
 
 ### Install and run with uv
 
@@ -54,7 +54,7 @@ uv run --extra dev ruff check .
 uv run --extra dev ruff format --check .
 ```
 
-<details>
+<details id="install-with-pip">
 <summary>Alternative installation: pip</summary>
 
 ### Install with pip

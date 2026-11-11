@@ -52,7 +52,35 @@ cd gn-ticketing-agent
 uv sync --extra dev
 ```
 
-Copy `.env.example` to `.env` (macOS/Linux: `cp .env.example .env`; PowerShell: `Copy-Item .env.example .env`) and set your authorized `OPENAI_API_KEY`. Then run `uv run gn-ticketing`. The application needs the `.env` file to launch. `uv sync` creates `.venv` and installs the project, its dependencies, and the test tools from `uv.lock`. To run the checks, use `uv run --extra dev python -m pytest`, `uv run --extra dev ruff check .`, and `uv run --extra dev ruff format --check .`. To run only the API, use `uv run uvicorn ticketing_system.api.main:app --reload`.
+`uv sync` creates `.venv` and installs the project and test tools from `uv.lock`.
+
+Create your local configuration file:
+
+```bash
+# macOS / Linux
+cp .env.example .env
+```
+
+```powershell
+# Windows PowerShell
+Copy-Item .env.example .env
+```
+
+Set `OPENAI_API_KEY` in `.env` to your authorized GN key, then start the API and agent together:
+
+```bash
+uv run gn-ticketing
+```
+
+Run the checks with:
+
+```bash
+uv run --extra dev python -m pytest
+uv run --extra dev ruff check .
+uv run --extra dev ruff format --check .
+```
+
+To run only the API, use `uv run uvicorn ticketing_system.api.main:app --reload`.
 
 ### Alternative: install with pip
 

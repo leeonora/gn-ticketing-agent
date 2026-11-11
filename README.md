@@ -193,11 +193,11 @@ HTTP tool calls have a 10-second timeout. Connection failures and timeouts retur
 
 ## Part 3: Automated PR review
 
-On pull requests **opened** or **synchronized**, `.github/workflows/pr_review.yml` runs `scripts/analyze_pr.py`. The script retrieves the diff from GitHub, sends it to a dedicated Pydantic AI reviewer using GN's model, and posts **one general PR comment per successful execution** with a summary and suggestions. It does not execute PR code.
+On pull requests **opened** or **synchronized**, `.github/workflows/pr_review.yml` runs `scripts/analyze_pr.py` from the trusted base revision. The script retrieves the PR diff through GitHub's API, sends it to a dedicated Pydantic AI reviewer using GN's model, and posts **one general PR comment per successful execution** with a summary and suggestions. The PR's files are treated as review input and are not executed in the secret-bearing job.
 
 **To configure GitHub Actions:** In repository **Settings → Secrets and variables → Actions**, create a repository secret called `GN_API_KEY` containing the authorized GN key. The workflow receives `GITHUB_TOKEN` from GitHub automatically; no personal GitHub token is required. It is limited to **same-repository PRs** (not forks), with `contents: read` and `pull-requests: write` permissions. The workflow installs dependencies with `python -m pip install -e ".[dev]"`.
 
-**Verified end to end:** [Pull request #1](https://github.com/leeonora/gn-ticketing-agent/pull/1) ran the GitHub Actions job successfully and received an automated comment from `github-actions[bot]`, containing a review of the changes and improvement suggestions.
+**Earlier end-to-end verification:** [Pull request #1](https://github.com/leeonora/gn-ticketing-agent/pull/1) ran the previous workflow successfully and received an automated comment from `github-actions[bot]`. The trusted-base checkout change has passed local checks but has not yet been verified in a GitHub Actions run.
 
 The reviewer limits input to the first **20,000 characters** of the diff and to **one model request per run**. Very large diffs may be reviewed only partially; new workflow runs create new comments rather than updating an earlier one. Model-generated feedback is advisory.
 

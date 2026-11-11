@@ -40,7 +40,21 @@ The ticketing agent selects tools, but **ticket operations are performed through
 
 ## Local setup
 
-**Prerequisites:** Python 3.11+, Git, and an authorized GN API key for live agent use. Local tests and the mock API do not require the GN key.
+**Prerequisites:** [uv](https://docs.astral.sh/uv/getting-started/installation/), Git, and an authorized GN API key for live agent use. uv can install a compatible Python version if needed. Local tests and the mock API do not require the GN key.
+
+### Install and run with uv
+
+From a fresh clone, run these commands in macOS, Linux, or Windows PowerShell:
+
+```bash
+git clone https://github.com/leeonora/gn-ticketing-agent.git
+cd gn-ticketing-agent
+uv sync --extra dev
+```
+
+Copy `.env.example` to `.env` (macOS/Linux: `cp .env.example .env`; PowerShell: `Copy-Item .env.example .env`) and set your authorized `OPENAI_API_KEY`. Then run `uv run gn-ticketing`. The application needs the `.env` file to launch. `uv sync` creates `.venv` and installs the project, its dependencies, and the test tools from `uv.lock`. To run the checks, use `uv run --extra dev python -m pytest`, `uv run --extra dev ruff check .`, and `uv run --extra dev ruff format --check .`. To run only the API, use `uv run uvicorn ticketing_system.api.main:app --reload`.
+
+### Alternative: install with pip
 
 Clone the repository and create a virtual environment. Choose the commands for your shell:
 

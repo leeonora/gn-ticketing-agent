@@ -1,6 +1,7 @@
 import logging
 from unittest.mock import Mock, patch
 
+from openai import OpenAIError
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
@@ -59,6 +60,22 @@ def test_cli_usage_limit(capsys):
 
     assert "exceeded the" in output
     assert "Goodbye!" in output
+
+
+def test_cli_model_failure_shows_safe_message(capsys):
+    with (
+        patch("builtins.input", side_effect=["Create a ticket", "exit"]),
+        patch(
+            "ticketing_system.agent.cli.agent.run_sync",
+            side_effect=OpenAIError("internal model detail"),
+        ),
+    ):
+        main()
+
+    output = capsys.readouterr().out
+    assert "language model request failed" in output
+    assert "Check your connection and API key" in output
+    assert "internal model detail" not in output
 
 
 def test_cli_conversation_logging_enabled(monkeypatch, caplog):

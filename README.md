@@ -116,7 +116,7 @@ uv run python -m ticketing_system.agent.cli
 | **3. PR review bot** | GitHub Actions + Python + Pydantic AI; posts one review comment per run | 7 tests passed; [PR #1 successfully reviewed](https://github.com/leeonora/gn-ticketing-agent/pull/1) |
 | **4. Azure Terraform** | Resource group, Linux App Service plan, and Linux Web App | `terraform init` and `terraform validate` succeeded (11 November 2026) |
 
-**Latest local verification (11 November 2026): 47 tests passed**, Ruff lint and formatting checks passed.
+**Latest local verification (11 November 2026): 50 tests passed**, Ruff lint and formatting checks passed.
 
 ## Stack and architecture
 
@@ -185,6 +185,8 @@ The failed update leaves the ticket unchanged.
 
 The CLI's Pydantic AI agent registers six HTTPX-backed tools: `list_tickets`, `get_ticket`, `create_ticket`, `update_ticket`, `delete_ticket`, and `restore_ticket`. Tool results contain success/error status and actual API error details (including missing resolution notes); the agent can explain these to the user instead of inventing a successful operation.
 
+HTTP tool calls have a 10-second timeout. Connection failures and timeouts return clear errors, while common language-model failures show a retry message in the CLI instead of raw exception text. Write operations are not retried automatically because a timed-out request may already have succeeded.
+
 **Live GN verification (9 November 2026):** All six required assessment scenarios succeeded: create a keyboard ticket, list open tickets, retrieve details, reject `PROGRESS` with valid statuses, resolve with a note, and report a nonexistent ticket (`404`).
 
 **Live GN verification (10 November 2026):** In one multi-turn conversation, the agent created a ticket, soft-deleted it after “Delete that ticket,” and restored it after “Actually, can you undo that?” Direct API retrieval confirmed `deleted=false`. These were live LLM/API interactions; repeatable tests use mocks instead.
@@ -236,10 +238,11 @@ python -m ruff format --check .
 | --- | ---: | --- |
 | `tests/test_api.py` | 23 | CRUD, filtering, resolution-note validation, delete/restore, HTTP errors |
 | `tests/test_agent.py` | 9 | Mocked registered tool calls and result forwarding |
-| `tests/test_cli.py` | 4 | CLI interaction, limits, optional conversation logging |
+| `tests/test_cli.py` | 5 | CLI interaction, limits, model failures, optional conversation logging |
+| `tests/test_tools.py` | 2 | API connection and timeout failures |
 | `tests/test_run.py` | 4 | Launcher API-key prompt, secure saving, example-key detection, non-interactive handling |
 | `tests/test_pr_review.py` | 7 | Mocked GitHub diff/comment HTTP calls and review invocation |
-| **Total** | **47** | **All passed locally; no GN calls in tests** |
+| **Total** | **50** | **All passed locally; no GN calls in tests** |
 
 ## Logging
 

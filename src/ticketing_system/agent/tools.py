@@ -91,10 +91,23 @@ def _request(
             duration,
         )
 
+        if isinstance(exc, httpx.TimeoutException):
+            error = (
+                "The ticketing API timed out. The operation may have completed; "
+                "check the ticket state before trying again."
+            )
+        elif isinstance(exc, httpx.ConnectError):
+            error = (
+                "Cannot reach the ticketing API. Check that the server is running "
+                "and try again."
+            )
+        else:
+            error = "The ticketing API request failed. Please try again."
+
         return {
             "success": False,
             "status_code": None,
-            "error": f"Ticketing API request failed: {type(exc).__name__}",
+            "error": error,
         }
 
 

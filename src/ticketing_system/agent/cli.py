@@ -99,8 +99,10 @@ def main() -> None:
                 duration,
             )
 
-            print(f"\nAgent error: {exc}\n")
-            print("Please try again.")
+            print(
+                "\nAgent: The language model request failed. "
+                "Check your connection and API key, then try again.\n"
+            )
 
 
 if __name__ == "__main__":

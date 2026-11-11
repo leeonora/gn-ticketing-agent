@@ -76,8 +76,10 @@ For Fish, activate with `source .venv/bin/activate.fish` instead.
 
 **Windows (PowerShell):**
 
+Select a specific installed Python version. The `py -3` shortcut may use an older configured default even when a newer version is installed. Replace `3.11` below with another installed version of 3.11 or newer if needed. `--clear` replaces a virtual environment previously created with the wrong Python version.
+
 ```powershell
-py -3 -m venv .venv
+py -3.11 -m venv --clear .venv
 .\.venv\Scripts\python.exe --version
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"

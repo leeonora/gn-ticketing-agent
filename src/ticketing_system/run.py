@@ -48,6 +48,12 @@ def ensure_api_key() -> bool:
     try:
         if dotenv_path.is_symlink():
             raise OSError("Refusing to replace a symlinked .env file")
+        example_path = dotenv_path.with_name(".env.example")
+        if not dotenv_path.exists() and example_path.is_file():
+            example_contents = example_path.read_text(encoding="utf-8")
+            fd = os.open(dotenv_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as env_file:
+                env_file.write(example_contents)
         set_key(dotenv_path, "OPENAI_API_KEY", key)
         dotenv_path.chmod(0o600)
     except OSError as exc:

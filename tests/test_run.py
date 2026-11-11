@@ -40,12 +40,21 @@ def test_example_key_is_saved_without_printing_key(monkeypatch, capsys, tmp_path
 
 def test_missing_env_file_is_created(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env.example").write_text(
+        "OPENAI_API_KEY=your_api_key_here\n"
+        "OPENAI_BASE_URL=https://example.test/openai/v1\n"
+        "OPENAI_MODEL=test-model\n"
+    )
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr(run.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(run.getpass, "getpass", lambda prompt: "entered-test-key")
 
     assert run.ensure_api_key() is True
-    assert dotenv_values(tmp_path / ".env")["OPENAI_API_KEY"] == "entered-test-key"
+    assert dotenv_values(tmp_path / ".env") == {
+        "OPENAI_API_KEY": "entered-test-key",
+        "OPENAI_BASE_URL": "https://example.test/openai/v1",
+        "OPENAI_MODEL": "test-model",
+    }
     assert stat.S_IMODE((tmp_path / ".env").stat().st_mode) == 0o600
 
 

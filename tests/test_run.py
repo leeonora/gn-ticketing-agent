@@ -58,6 +58,21 @@ def test_missing_env_file_is_created(monkeypatch, tmp_path):
     assert stat.S_IMODE((tmp_path / ".env").stat().st_mode) == 0o600
 
 
+def test_control_character_in_env_and_prompt_is_rejected(monkeypatch, capsys, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OPENAI_API_KEY='\x16'\n")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(run.sys.stdin, "isatty", lambda: True)
+    entries = iter(["\x16", "entered-test-key"])
+    monkeypatch.setattr(run.getpass, "getpass", lambda prompt: next(entries))
+
+    assert run.ensure_api_key() is True
+    assert dotenv_values(tmp_path / ".env")["OPENAI_API_KEY"] == "entered-test-key"
+    output = capsys.readouterr().out
+    assert "control character" in output
+    assert "entered-test-key" not in output
+
+
 def test_missing_key_without_terminal_exits_cleanly(monkeypatch, capsys):
     monkeypatch.setattr(run, "load_dotenv", lambda **kwargs: None)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)

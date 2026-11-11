@@ -22,22 +22,34 @@ EXAMPLE_KEYS = {
 }
 
 
+def _has_control_character(value: str) -> bool:
+    return any(ord(char) < 32 or ord(char) == 127 for char in value)
+
+
 def ensure_api_key() -> bool:
     """Prompt for a missing example key before starting the agent."""
     load_dotenv(dotenv_path=Path.cwd() / ".env")
     key = os.getenv("OPENAI_API_KEY", "").strip()
-    if key and key.lower() not in EXAMPLE_KEYS:
+    if key and key.lower() not in EXAMPLE_KEYS and not _has_control_character(key):
         return True
 
     if not sys.stdin.isatty():
         print("Missing OPENAI_API_KEY. Set it in .env or run from a terminal.")
         return False
 
-    try:
-        key = getpass.getpass("Enter your GN API key (input hidden): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print("\nAPI key entry cancelled.")
-        return False
+    while True:
+        try:
+            key = getpass.getpass("Enter your GN API key (input hidden): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAPI key entry cancelled.")
+            return False
+
+        if not _has_control_character(key):
+            break
+        print(
+            "Input contained a control character. Use your terminal's Paste command "
+            "instead of Ctrl+V, or enter the key directly in .env."
+        )
 
     if not key or key.lower() in EXAMPLE_KEYS:
         print("No valid API key entered. Add it to .env and try again.")

@@ -28,6 +28,8 @@ uv run gn-ticketing
 
 If `OPENAI_API_KEY` is missing or still the example placeholder, the launcher asks for it with hidden input and saves it to `.env` for future runs. If `.env` does not exist, the launcher starts from `.env.example` so the other settings are included. The file is Git-ignored and restricted to your user account, but it stores the key as plaintext. The prompt requires an interactive terminal.
 
+On Windows, use your terminal's Paste command for the hidden prompt; Ctrl+V may enter a control character instead. The launcher rejects that character and asks again. You can also paste the key directly into `.env`.
+
 Alternatively, create `.env` and add your authorized GN key before launching:
 
 ```bash
@@ -59,13 +61,14 @@ uv run --extra dev ruff format --check .
 
 ### Install with pip
 
-After cloning the repository, create a virtual environment and install the project:
+After cloning the repository, use Python 3.11 or newer to create a virtual environment. Upgrade pip inside it before installing the project; older pip versions cannot install this `pyproject.toml` project in editable mode.
 
 **macOS / Linux (Bash or Zsh):**
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
@@ -75,6 +78,8 @@ For Fish, activate with `source .venv/bin/activate.fish` instead.
 
 ```powershell
 py -3 -m venv .venv
+.\.venv\Scripts\python.exe --version
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 

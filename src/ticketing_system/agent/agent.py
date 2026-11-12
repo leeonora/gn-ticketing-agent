@@ -71,7 +71,7 @@ agent = Agent(
         "calling the update tool."
     ),
     model_settings={
-        "openai_reasoning_effort": "none",
+        "openai_reasoning_effort": "none",  # to save tokens
     },
 )
 

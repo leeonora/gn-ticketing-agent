@@ -88,7 +88,7 @@ class TicketStore:
             # Validate the complete updated ticket.
             updated_ticket = Ticket.model_validate(ticket_data)
 
-            # Save only after validation succeeds.
+            # save only after validation succeeds.
             self.tickets[ticket_id] = updated_ticket
 
             return updated_ticket

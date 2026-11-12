@@ -1,5 +1,3 @@
-"""Tests for the one-command launcher configuration."""
-
 import stat
 
 from dotenv import dotenv_values

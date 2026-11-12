@@ -1,5 +1,3 @@
-"""Concurrency regressions for the in-memory store."""
-
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from time import sleep

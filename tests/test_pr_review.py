@@ -1,5 +1,3 @@
-"""Tests for the automated pull request reviewer."""
-
 from types import SimpleNamespace
 from unittest.mock import Mock
 

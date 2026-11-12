@@ -1,5 +1,3 @@
-"""HTTP contracts and failure behavior for ticketing tools."""
-
 import logging
 
 import httpx

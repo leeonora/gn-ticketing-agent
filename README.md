@@ -45,7 +45,7 @@ Copy-Item .env.example .env
 
 Remaining settings (URLs, model selection, and conversation log toggling) are already in `.env.example`. Keep `.env` and credentials out of Git.
 
-The launcher starts FastAPI, waits for its health check, and opens the CLI. Type `exit` to stop both processes. Try `Create a ticket about a broken keyboard` or `List open tickets`. API docs are at <http://127.0.0.1:8000/docs> while it runs.
+The launcher starts FastAPI, waits for its health check, and opens the CLI. Type `exit` to stop both processes. Try `Create a ticket about a broken keyboard` or `List open tickets`.
 
 Startup messages and HTTP tool logs (for example, `Sending POST request to /tickets` and `HTTP 201`) appear in the terminal alongside the agent's answer so the API interaction is easy to follow during this assessment. They are diagnostic output, not part of the agent's reply. In a production interface, these logs would be kept out of the user-facing conversation and routed to application logging instead.
 

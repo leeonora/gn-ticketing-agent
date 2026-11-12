@@ -1,5 +1,3 @@
-"""Tests for the automated pull request reviewer."""
-
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -129,3 +127,5 @@ def test_post_pr_comment_http_error():
         post_pr_comment(client, "owner/repo", 42, "Review")
 
     assert exc_info.value.response.status_code == 403
+
+# adding this little comment for a final test

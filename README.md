@@ -2,7 +2,7 @@
 
 I prepared this project for GN's recruitment process, and I look forward to discussing it at the second interview! It includes a mock support-ticketing API, a natural-language agent, and an automated pull-request reviewer, as well as a Terraform skeleton.
 
-To try it, start with the [installation instructions](#local-setup). For the big picture, see the [architecture overview](#stack-and-architecture). The implementation details are in [Part 1: Ticketing API](#part-1-ticketing-api), [Part 2: GenAI agent](#part-2-natural-language-ticketing-agent), [Part 3: PR review bot](#part-3-automated-pr-review), [Part 4: Azure Terraform](#part-4-azure-terraform-skeleton), and [Part 5: Production design decision](#part-5-optional-production-considerations).
+To try it, start with the [installation instructions](#local-setup). For the big picture, see the [architecture overview](#stack-and-architecture). The implementation details are in [Part 1: Ticketing API](#part-1-ticketing-api), [Part 2: GenAI agent](#part-2-natural-language-ticketing-agent), [Part 3: PR Review and CI](#part-3-automated-pr-review-and-ci), [Part 4: Azure Terraform](#part-4-azure-terraform-skeleton), and [Part 5: Production design decision](#part-5-optional-production-considerations).
 
 ## Local setup
 
@@ -134,7 +134,7 @@ uv run python -m ticketing_system.agent.cli
 | **3. PR review bot**   | GitHub Actions + Python + Pydantic AI; posts one review comment per run                            | 7 tests passed; [PR #1 successfully reviewed](https://github.com/leeonora/gn-ticketing-agent/pull/1) |
 | **4. Azure Terraform** | Resource group, Linux App Service plan, and Linux Web App                                          | `terraform init` and `terraform validate` succeeded                                                  |
 
-**Latest local verification (12 November 2026): 59 tests passed**, Ruff lint and formatting checks passed.
+**Latest local verification (12 November 2026): 63 tests passed**, Ruff lint and formatting checks passed.
 
 ## Stack and architecture
 
@@ -197,22 +197,13 @@ The failed update leaves the ticket unchanged.
 
 ## Part 2: Natural-language ticketing agent
 
-The CLI's Pydantic AI agent registers six HTTPX-backed tools: 
+The Pydantic AI agent uses six HTTPX-backed tools to interact with the ticketing API: `list_tickets`, `get_ticket`, `create_ticket`, `update_ticket`, `delete_ticket`, and `restore_ticket`.
 
-- `list_tickets`
-- `get_ticket`
-- `create_ticket`
-- `update_ticket`
-- `delete_ticket`
-- `restore_ticket`
+**Error handling:** The agent interprets API errors (e.g., `404`, `422`) and provides actionable feedback. Network and model failures are handled gracefully, with warnings to check ticket state before repeating potentially completed write operations.
 
-The agent interprets API errors (e.g., `404`, `422`) and provides actionable feedback. Timeouts, connection failures, and LLM errors are handled gracefully, without automatically retrying write operations. Unexpected non-JSON API responses return structured errors. If a model request fails after a tool call, the CLI warns that ticket operations may already have completed and advises checking state before repeating a write.
+**Security:** Ticket content and API responses are treated as untrusted data, not instructions. This provides a prompt-level safeguard against unintended tool calls.
 
-**Live GN verification (9–10 November 2026):**
-
-- All six required assessment scenarios passed, including invalid statuses, missing tickets, and resolution notes.
-- Multi-turn context was verified: the agent created, deleted, and restored a ticket using conversational follow-ups.
-- Live results were verified against the API; automated tests use mocks.
+**Verification:** All six required GN scenarios and an additional missing-resolution scenario passed with the live GN-hosted LLM. See [Agent Verification](docs/verification.md) for the recorded results.
 
 ## Part 3: Automated PR Review and CI
 
@@ -273,9 +264,9 @@ terraform validate
 Run the automated tests and code quality checks:
 
 ```bash
-python -m pytest -v
-python -m ruff check .
-python -m ruff format --check .
+uv run --extra dev python -m pytest -v
+uv run --extra dev ruff check .
+uv run --extra dev ruff format --check .
 ```
 
 | Tests | Cases | What they check |
@@ -283,17 +274,19 @@ python -m ruff format --check .
 | `tests/test_api.py` | 24 | CRUD, filtering, resolution-note validation, delete/restore, HTTP errors |
 | `tests/test_agent.py` | 9 | Registered tools through HTTP: all six assessment scenarios, delete/restore, and retrieval 404; API details forwarded to a scripted model |
 | `tests/test_cli.py` | 7 | CLI interaction, history forwarding, limits, partial-write failures, optional conversation logging |
-| `tests/test_tools.py` | 5 | Connection/timeout failures, structured 422 details, missing-detail fallback, and malformed success responses |
+| `tests/test_tools.py` | 9 | Connection/timeout failures, structured API errors, malformed responses, ambiguous writes without retries, and exclusion of raw error details from logs |
 | `tests/test_store.py` | 2 | Concurrent creation and updates without lost tickets or fields |
 | `tests/test_run.py` | 5 | Launcher API-key prompt, secure saving, example-key detection, non-interactive handling |
 | `tests/test_pr_review.py` | 7 | Mocked GitHub diff/comment HTTP calls and review invocation |
-| **Total** | **59** | **All passed locally; no GN calls in tests** |
+| **Total** | **63** | **All passed locally; no GN calls in tests** |
 
 ## Logging
 
 API operations, HTTP responses, and CLI errors are recorded in console and rotating file logs (`logs/ticketing.log`). Logs are Git-ignored.
 
 Conversation logging is disabled by default (`LOG_CONVERSATIONS=false`) and can be enabled in `.env` for nonsensitive test data.
+
+HTTP failure logs contain operation metadata (method, endpoint, status or exception type, and duration), without raw API error bodies. Error details are still returned to the agent for user feedback. Enabling conversation logging may record those details in the agent's response.
 
 File logging is intended for local development only.
 ## Part 5 (optional): Production considerations

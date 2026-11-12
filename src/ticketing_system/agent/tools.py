@@ -87,12 +87,11 @@ def _request(
         log = logger.warning if 400 <= status_code < 500 else logger.error
 
         log(
-            "%s %s failed | HTTP %s | %.3f seconds | %s",
+            "%s %s failed | HTTP %s | %.3f seconds",
             method,
             endpoint,
             status_code,
             duration,
-            detail,
         )
 
         return {
@@ -121,6 +120,11 @@ def _request(
             error = (
                 "Cannot reach the ticketing API. Check that the server is running "
                 "and try again."
+            )
+        elif method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+            error = (
+                "The ticketing API request failed. The operation may have completed; "
+                "check the ticket state before trying again."
             )
         else:
             error = "The ticketing API request failed. Please try again."

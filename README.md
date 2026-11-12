@@ -242,7 +242,7 @@ The `infra/` directory defines a minimal, validated Terraform configuration desc
 
 - **Resource group** – Organizes Azure resources.
 - **Linux App Service plan** (`B1`) – Provides compute capacity.
-- **Linux Web App (Python 3.13)** – Defines the application hosting environment.
+- **Linux Web App (Python 3.13)** – Defines the application hosting environment, requires HTTPS, and starts the FastAPI app with Uvicorn.
 
 The configuration is organized into `main.tf`, `variables.tf`, and `outputs.tf`.
 
@@ -257,7 +257,7 @@ terraform validate
 
 **Verification (10 November 2026):** Initialization, formatting, and validation passed locally using AzureRM `v4.81.0`.
 
-**Scope:** Infrastructure configuration only. No Azure resources were deployed, as deployment is not required by the assessment.
+**Scope:** Infrastructure configuration only. Deploying the application source and installing its dependencies are separate steps. No Azure resources were deployed, as deployment is not required by the assessment. CI uses Terraform 1.17.1 for reproducible validation.
 
 ## Tests and code quality
 

@@ -36,8 +36,11 @@ resource "azurerm_linux_web_app" "ticketing" {
   location            = azurerm_resource_group.ticketing.location
   resource_group_name = azurerm_resource_group.ticketing.name
   service_plan_id     = azurerm_service_plan.ticketing.id
+  https_only          = true
 
   site_config {
+    app_command_line = "python -m uvicorn ticketing_system.api.main:app --app-dir src --host 0.0.0.0 --port 8000"
+
     application_stack {
       python_version = "3.13"
     }

@@ -213,15 +213,36 @@ The agent interprets API errors (e.g., `404`, `422`) and provides actionable fee
 - Multi-turn context was verified: the agent created, deleted, and restored a ticket using conversational follow-ups.
 - Live results were verified against the API; automated tests use mocks.
 
-## Part 3: Automated PR review
+## Part 3: Automated PR Review and CI
 
-A **GitHub Actions workflow** (`pr_review.yml`) triggers when a pull request is opened or updated. It runs `scripts/analyze_pr.py`, which uses a Pydantic AI reviewer and GN's model to analyze the PR diff and post a single comment with a summary and suggested improvements.
+The project uses two independent GitHub Actions workflows to automate pull request reviews and code quality checks. Both workflows run when a pull request is opened or updated.
 
-**Setup:** Add `GN_API_KEY` under **Settings → Secrets and variables → Actions**. GitHub provides `GITHUB_TOKEN` automatically.
+### AI Pull Request Reviewer
 
-**Verification:** [PR #1](https://github.com/leeonora/gn-ticketing-agent/pull/1) successfully received an automated review. The subsequent security improvement (trusted-base checkout) passed local checks but has not yet been tested in GitHub Actions, as the service was down at the time of development.
+The PR review workflow (`.github/workflows/pr_review.yml`) runs `scripts/analyze_pr.py`, which uses Pydantic AI and GN's LLM to analyze the pull request diff and post a single review comment containing a summary and suggested improvements.
 
-**Safeguards:** Only same-repository PRs are reviewed. PR code is not executed, the diff is limited to 20,000 characters, and the reviewer makes one model request per run.
+**Setup:** Add `GN_API_KEY` under **Settings → Secrets and variables → Actions** in the GitHub repository. GitHub provides `GITHUB_TOKEN` automatically.
+
+**Safeguards:** Only same-repository pull requests are reviewed. PR code is not executed, the diff is limited to 20,000 characters, and the reviewer makes one model request per run.
+
+### Continuous Integration (CI)
+
+The CI workflow (`.github/workflows/ci.yml`) runs automatically when a pull request is opened, updated, or reopened. It performs the following checks:
+
+- **pytest:** Runs the automated test suite for the API, agent, CLI, and PR reviewer.
+- **Ruff linting:** Identifies potential Python errors and style violations.
+- **Ruff formatting:** Checks consistent Python formatting.
+- **Terraform formatting:** Checks infrastructure configuration formatting.
+- **Terraform validation:** Initializes Terraform without configuring the backend and validates the infrastructure configuration without deploying any resources.
+
+Unlike the AI reviewer, the CI workflow does not require a GN API key or make LLM calls.
+
+### Verification
+
+- **[PR #1](https://github.com/leeonora/gn-ticketing-agent/pull/1):** Demonstrated the initial AI reviewer successfully posting an automated review.
+- **[PR #2](https://github.com/leeonora/gn-ticketing-agent/pull/2):** Both GitHub Actions workflows completed successfully. The CI workflow passed all automated checks, while the AI reviewer analyzed the new CI configuration and suggested improvements to Terraform version management and GitHub Actions dependency pinning.
+
+The second pull request also verified the updated PR reviewer, including its trusted-base checkout safeguard.
 
 ## Part 4: Azure Terraform skeleton
 

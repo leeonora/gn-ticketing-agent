@@ -28,7 +28,7 @@ uv run gn-ticketing
 
 If `OPENAI_API_KEY` is missing or still the example placeholder, the launcher asks for it with hidden input and saves it to `.env` for future runs. 
 - If `.env` does not exist, the launcher creates it from `.env.example`.
-- The file is Git-ignored and restricted to your user account, but it stores the key as plaintext. 
+- The file is Git-ignored and stores the key as plaintext. The launcher applies owner-only file permissions on macOS/Linux; Windows access depends on the file's existing permissions.
 - The prompt requires an interactive terminal.
 
 Alternatively, manually create `.env` from `.env.example` and add your authorized GN key before launching:

@@ -129,12 +129,12 @@ uv run python -m ticketing_system.agent.cli
 
 | Part                   | Implementation                                                                                     | Verification                                                                                         |
 | ---------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| **1. Ticketing API**   | FastAPI CRUD, filtering, validation (including required resolution notes), soft delete and restore | 23 API tests passed                                                                                  |
-| **2. AI agent**        | Pydantic AI CLI with six HTTP-backed tools                                                         | 9 agent tests, 5 CLI tests; live GN scenarios demonstrated                                           |
+| **1. Ticketing API**   | FastAPI CRUD, filtering, validation (including required resolution notes), soft delete and restore | 24 API tests passed                                                                                  |
+| **2. AI agent**        | Pydantic AI CLI with six HTTP-backed tools                                                         | 9 agent tests, 7 CLI tests; live GN scenarios demonstrated                                           |
 | **3. PR review bot**   | GitHub Actions + Python + Pydantic AI; posts one review comment per run                            | 7 tests passed; [PR #1 successfully reviewed](https://github.com/leeonora/gn-ticketing-agent/pull/1) |
 | **4. Azure Terraform** | Resource group, Linux App Service plan, and Linux Web App                                          | `terraform init` and `terraform validate` succeeded                                                  |
 
-**Latest local verification (12 November 2026): 50 tests passed**, Ruff lint and formatting checks passed.
+**Latest local verification (12 November 2026): 59 tests passed**, Ruff lint and formatting checks passed.
 
 ## Stack and architecture
 
@@ -170,6 +170,7 @@ _Created with_ [_Miro_](https://miro.com/)_._
 - Resolution notes: Resolving a ticket requires a non-empty resolution note (either provided in the request or already present). Missing or blank notes return `422`.
 - Updates are validated before saving so invalid changes do not partially apply.
 - Deletion sets `deleted=true`, hides the ticket from normal retrieval/listing, and allows restoration with its original data. 
+- Store operations use a lock to protect concurrent requests within one server process. Multiple worker processes would still have separate stores.
 - **Storage is in memory**: restarting the server loses active and deleted tickets alike.
 
 Example API requests (no LLM usage):
@@ -205,7 +206,7 @@ The CLI's Pydantic AI agent registers six HTTPX-backed tools:
 - `delete_ticket`
 - `restore_ticket`
 
-The agent interprets API errors (e.g., `404`, `422`) and provides actionable feedback. Timeouts, connection failures, and LLM errors are handled gracefully, without automatically retrying write operations.
+The agent interprets API errors (e.g., `404`, `422`) and provides actionable feedback. Timeouts, connection failures, and LLM errors are handled gracefully, without automatically retrying write operations. Unexpected non-JSON API responses return structured errors. If a model request fails after a tool call, the CLI warns that ticket operations may already have completed and advises checking state before repeating a write.
 
 **Live GN verification (9–10 November 2026):**
 
@@ -223,7 +224,7 @@ The PR review workflow (`.github/workflows/pr_review.yml`) runs `scripts/analyze
 
 **Setup:** Add `GN_API_KEY` under **Settings → Secrets and variables → Actions** in the GitHub repository. GitHub provides `GITHUB_TOKEN` automatically.
 
-**Safeguards:** Only same-repository pull requests are reviewed. PR code is not executed, the diff is limited to 20,000 characters, and the reviewer makes one model request per run.
+**Safeguards:** The reviewer installs dependencies from `uv.lock` using `uv sync --locked`. Only same-repository pull requests are reviewed. PR code is not executed, the diff is limited to 20,000 characters, and the reviewer makes one model request per run.
 
 ### Continuous Integration (CI)
 
@@ -279,13 +280,14 @@ python -m ruff format --check .
 
 | Tests | Cases | What they check |
 | --- | ---: | --- |
-| `tests/test_api.py` | 23 | CRUD, filtering, resolution-note validation, delete/restore, HTTP errors |
-| `tests/test_agent.py` | 9 | Mocked registered tool calls and result forwarding |
-| `tests/test_cli.py` | 5 | CLI interaction, limits, model failures, optional conversation logging |
-| `tests/test_tools.py` | 2 | API connection and timeout failures |
-| `tests/test_run.py` | 4 | Launcher API-key prompt, secure saving, example-key detection, non-interactive handling |
+| `tests/test_api.py` | 24 | CRUD, filtering, resolution-note validation, delete/restore, HTTP errors |
+| `tests/test_agent.py` | 9 | Registered tools through HTTP: all six assessment scenarios, delete/restore, and retrieval 404; API details forwarded to a scripted model |
+| `tests/test_cli.py` | 7 | CLI interaction, history forwarding, limits, partial-write failures, optional conversation logging |
+| `tests/test_tools.py` | 5 | Connection/timeout failures, structured 422 details, missing-detail fallback, and malformed success responses |
+| `tests/test_store.py` | 2 | Concurrent creation and updates without lost tickets or fields |
+| `tests/test_run.py` | 5 | Launcher API-key prompt, secure saving, example-key detection, non-interactive handling |
 | `tests/test_pr_review.py` | 7 | Mocked GitHub diff/comment HTTP calls and review invocation |
-| **Total** | **50** | **All passed locally; no GN calls in tests** |
+| **Total** | **59** | **All passed locally; no GN calls in tests** |
 
 ## Logging
 

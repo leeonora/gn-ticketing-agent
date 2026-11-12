@@ -130,6 +130,12 @@ def update_ticket(ticket_id: int, updates: TicketUpdate):
             detail=str(error),
         ) from error
 
+    if ticket is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket with ID {ticket_id} not found.",
+        )
+
     logger.info(
         "Ticket %s updated successfully | Fields: %s",
         ticket_id,
@@ -161,29 +167,19 @@ def delete_ticket(ticket_id: int):
     status_code=status.HTTP_200_OK,
 )
 def restore_ticket(ticket_id: int):
-    # Check storage directly because get() hides deleted tickets.
-    existing_ticket = store.tickets.get(ticket_id)
+    try:
+        restored_ticket = store.restore(ticket_id)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+        ) from error
 
-    if existing_ticket is None:
-        logger.warning("Cannot restore ticket %s: not found", ticket_id)
-
+    if restored_ticket is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Ticket with ID {ticket_id} not found.",
         )
-
-    if not existing_ticket.deleted:
-        logger.warning(
-            "Cannot restore ticket %s: ticket is not deleted",
-            ticket_id,
-        )
-
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Ticket with ID {ticket_id} is not deleted.",
-        )
-
-    restored_ticket = store.restore(ticket_id)
 
     logger.info("Ticket %s restored successfully", ticket_id)
 

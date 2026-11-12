@@ -87,7 +87,9 @@ def main() -> None:
 
             print(
                 "\nAgent: This request exceeded the "
-                "allowed number of model or tool calls.\n"
+                "allowed number of model or tool calls. "
+                "Ticket operations may already have completed; check the ticket "
+                "state before repeating a write operation.\n"
             )
 
         except (AgentRunError, OpenAIError) as exc:
@@ -101,7 +103,9 @@ def main() -> None:
 
             print(
                 "\nAgent: The language model request failed. "
-                "Check your connection and API key, then try again.\n"
+                "Check your connection and API key. "
+                "Ticket operations may already have completed; check the ticket "
+                "state before repeating a write operation.\n"
             )
 
 

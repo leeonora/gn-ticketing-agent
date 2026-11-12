@@ -1,5 +1,6 @@
-from unittest.mock import patch
+import json
 
+import httpx
 import pytest
 from pydantic_ai.messages import (
     ModelResponse,
@@ -9,6 +10,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from ticketing_system.agent import tools
 from ticketing_system.agent.agent import agent
 
 
@@ -130,37 +132,41 @@ from ticketing_system.agent.agent import agent
                 },
             },
         ),
-        # 8. Restore a nonexistent ticket
+        # 8. Retrieve an existing ticket (required assessment scenario)
         (
-            "restore_ticket",
-            {"ticket_id": 999},
-            {"ticket_id": 999},
+            "get_ticket",
+            {"ticket_id": 1},
+            {"ticket_id": 1},
+            {
+                "success": True,
+                "status_code": 200,
+                "data": {"id": 1, "title": "Keyboard not working", "status": "OPEN"},
+            },
+        ),
+        # 9. Update a nonexistent ticket (required assessment scenario)
+        (
+            "update_ticket",
+            {"ticket_id": 999, "status": "CLOSED"},
+            {"ticket_id": 999, "status": "CLOSED"},
             {
                 "success": False,
                 "status_code": 404,
                 "error": "Ticket with ID 999 not found.",
             },
         ),
-        # 9. Restore a ticket that is not deleted
-        (
-            "restore_ticket",
-            {"ticket_id": 1},
-            {"ticket_id": 1},
-            {
-                "success": False,
-                "status_code": 409,
-                "error": "Ticket with ID 1 is not deleted.",
-            },
-        ),
     ],
 )
 def test_agent_tools(
+    monkeypatch,
     tool_name,
     arguments,
     expected_kwargs,
     api_result,
 ):
-    """Verify tool execution and returned API data."""
+    """Verify registered tools, HTTP requests and API result delivery to the model.
+
+    The model is scripted; these tests do not evaluate natural-language understanding.
+    """
 
     call_count = 0
 
@@ -180,17 +186,56 @@ def test_agent_tools(
 
         return ModelResponse(parts=[TextPart(content="Simulated response")])
 
+    ticket_id = arguments.get("ticket_id")
+    method, path = {
+        "list_tickets": ("GET", "/tickets"),
+        "get_ticket": ("GET", f"/tickets/{ticket_id}"),
+        "create_ticket": ("POST", "/tickets"),
+        "update_ticket": ("PATCH", f"/tickets/{ticket_id}"),
+        "delete_ticket": ("DELETE", f"/tickets/{ticket_id}"),
+        "restore_ticket": ("POST", f"/tickets/{ticket_id}/restore"),
+    }[tool_name]
+    fields = {
+        key: value
+        for key, value in expected_kwargs.items()
+        if key != "ticket_id" and value is not None
+    }
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        assert request.method == method
+        assert request.url.host == "ticket-api.test"
+        assert request.url.path == path
+        assert request.extensions["timeout"]["read"] == 10.0
+        assert dict(request.url.params) == (
+            fields if tool_name == "list_tickets" else {}
+        )
+        if tool_name in {"create_ticket", "update_ticket"}:
+            assert json.loads(request.content) == fields
+        else:
+            assert request.content == b""
+
+        status_code = api_result["status_code"]
+        if status_code == 204:
+            return httpx.Response(204)
+        body = (
+            api_result["data"]
+            if api_result["success"]
+            else {"detail": api_result["error"]}
+        )
+        return httpx.Response(status_code, json=body)
+
+    monkeypatch.setattr(tools, "BASE_URL", "http://ticket-api.test")
     with (
-        patch(
-            f"ticketing_system.agent.tools.{tool_name}",
-            return_value=api_result,
-        ) as mock_tool,
+        httpx.Client(transport=httpx.MockTransport(handler)) as client,
         agent.override(model=FunctionModel(fake_model)),
     ):
+        monkeypatch.setattr(tools.httpx, "request", client.request)
         result = agent.run_sync("Execute test operation")
 
-    # Verify the correct Python function and arguments.
-    mock_tool.assert_called_once_with(**expected_kwargs)
+    # Each model tool call produces exactly one HTTP request, including failures.
+    assert len(requests) == 1
 
     # Verify the agent completed the interaction.
     assert result.output == "Simulated response"

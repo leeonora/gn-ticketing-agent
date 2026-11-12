@@ -441,3 +441,19 @@ def test_update_with_null_description(client):
     unchanged = client.get(f"/tickets/{created['id']}").json()
 
     assert unchanged["description"] == "Keyboard is unresponsive."
+
+
+def test_update_deleted_between_lookup_and_mutation_returns_404(client, monkeypatch):
+    ticket = client.post(
+        "/tickets", json={"title": "Keyboard", "description": "Broken"}
+    ).json()
+    original_update = api_main.store.update
+
+    def delete_before_update(ticket_id, changes):
+        api_main.store.delete(ticket_id)
+        return original_update(ticket_id, changes)
+
+    monkeypatch.setattr(api_main.store, "update", delete_before_update)
+    response = client.patch(f"/tickets/{ticket['id']}", json={"title": "Changed"})
+    assert response.status_code == 404
+    assert api_main.store.tickets[ticket["id"]].deleted is True

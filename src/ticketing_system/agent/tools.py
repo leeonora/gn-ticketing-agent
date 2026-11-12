@@ -36,7 +36,19 @@ def _request(
 
         response.raise_for_status()
 
-        data = response.json() if response.content else None
+        try:
+            data = response.json() if response.content else None
+        except ValueError:
+            logger.error("%s %s returned invalid JSON", method, endpoint)
+            return {
+                "success": False,
+                "status_code": response.status_code,
+                "error": (
+                    "The ticketing API returned an invalid JSON response. "
+                    "The operation may have completed; check the ticket state "
+                    "before trying again."
+                ),
+            }
 
         duration = time.perf_counter() - start_time
 
@@ -55,10 +67,19 @@ def _request(
         }
 
     except httpx.HTTPStatusError as exc:
+        detail = None
         try:
-            detail = exc.response.json().get("detail")
-        except (ValueError, AttributeError):
-            detail = exc.response.text
+            payload = exc.response.json()
+            if isinstance(payload, dict):
+                detail = payload.get("detail")
+                if not detail or (isinstance(detail, str) and not detail.strip()):
+                    detail = payload.get("message")
+        except ValueError:
+            pass
+        if not detail or (isinstance(detail, str) and not detail.strip()):
+            detail = exc.response.text.strip()[:1000] or (
+                f"The ticketing API returned HTTP {exc.response.status_code}."
+            )
 
         duration = time.perf_counter() - start_time
         status_code = exc.response.status_code
